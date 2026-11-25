@@ -530,18 +530,66 @@ function rateTableHtml(c) {
     <p class="muted">Ngân hàng báo đổi lãi từ ngày nào thì bấm “Thêm mốc đổi lãi suất”, nhập ngày áp dụng và mức lãi mới (kể cả ngày trong tương lai). Bấm “Sửa” ở dòng bất kỳ để đổi ngày hoặc mức lãi: tiền lãi các kỳ sau, lịch trả nợ và số liệu tổng hợp tự tính lại.</p>`;
 }
 
+/* ---------- khối thu gọn dùng chung (collapse) ---------- */
+const collOpen = new Set(load('cthn.coll', []));
+/** key: ghi nhớ trạng thái mở; opts: { sub, extra, cls, open (mặc định), acc (thu gọn kiểu chỉ mở 1 khoản vay) } */
+function coll(key, title, body, opts = {}) {
+  const open = opts.acc ? opts.open : collOpen.has(key);
+  return `<div class="coll ${opts.cls || ''}${open ? ' open' : ''}" data-coll="${esc(key)}"><button type="button" class="coll-h"${opts.acc ? ` data-acc="${esc(opts.acc)}"` : ''} aria-expanded="${open}">
+    <span class="coll-t"><b>${title}</b>${opts.sub ? `<small>${opts.sub}</small>` : ''}</span>${opts.extra || ''}<svg class="ic chev"><use href="#i-down"/></svg></button>
+    <div class="coll-b">${body}</div></div>`;
+}
+function onCollClick(e) {
+  const h = e.target.closest('.coll-h'); if (!h || h.dataset.acc) return;
+  const c = h.parentElement, k = c.dataset.coll, open = !c.classList.contains('open');
+  c.classList.toggle('open', open); h.setAttribute('aria-expanded', open);
+  if (k) { open ? collOpen.add(k) : collOpen.delete(k); save('cthn.coll', [...collOpen]); }
+}
+
+/* ---------- kiểm tra dữ liệu nhập trong popup ---------- */
+const V = {
+  money: v => parseInt(String(v || '').replace(/[^\d]/g, ''), 10) || 0,
+  num: v => { const t = String(v ?? '').trim().replace(',', '.'); return t === '' || !/^-?\d+(\.\d+)?$/.test(t) ? NaN : +t; },
+  isDate: v => /^\d{4}-\d{2}-\d{2}$/.test(v || '') && !isNaN(new Date(v + 'T00:00')),
+  isMonth: v => /^\d{4}-\d{2}$/.test(v || ''),
+  rate(v) { if (String(v ?? '').trim() === '') return 'Nhập lãi suất'; const n = V.num(v); if (isNaN(n)) return 'Chỉ nhập số, ví dụ 9,8 (không gõ dấu %)'; if (n <= 0 || n > 30) return 'Lãi suất năm phải từ 0,01 đến 30'; return ''; },
+  day(v) { const n = V.num(v); if (String(v ?? '').trim() === '') return 'Nhập ngày trả'; if (!Number.isInteger(n) || n < 1 || n > 31) return 'Nhập số nguyên từ 1 đến 31'; return ''; },
+};
+/** một ô nhập kèm nhãn, hướng dẫn và chỗ báo lỗi */
+const fld = (label, input, hint, cls = '') => `<label class="fld ${cls}"><span class="fl">${label}</span>${input}${hint ? `<small class="hint">${hint}</small>` : ''}<small class="err"></small></label>`;
+const moneyIn = (attrs, val) => `<input type="text" inputmode="numeric" autocomplete="off" data-money ${attrs} value="${val ? fmt(val) : ''}" placeholder="0">`;
+const rateIn = (attrs, val) => `<input type="text" inputmode="decimal" autocomplete="off" ${attrs} value="${esc(val ?? '')}" placeholder="VD: 9,8">`;
+function vClear(box) { box.querySelectorAll('.invalid').forEach(x => { x.classList.remove('invalid'); const e = x.querySelector(':scope > .err'); if (e) e.textContent = ''; }); }
+/** errs: [[ô input, thông báo]] – đánh dấu ô lỗi, cuộn tới ô đầu tiên; trả về true nếu không có lỗi */
+function vShow(box, errs) {
+  vClear(box);
+  errs = errs.filter(x => x[0] && x[1]);
+  errs.forEach(([inp, msg]) => { const w = inp.closest('.fld, .lrow'); if (!w) return; w.classList.add('invalid'); const e = w.querySelector(':scope > .err'); if (e && !e.textContent) e.textContent = msg; });
+  if (errs.length) { const f = errs[0][0]; f.scrollIntoView({ block: 'center', behavior: 'smooth' }); f.focus({ preventScroll: true }); toast('Còn ' + errs.length + ' ô chưa hợp lệ, xem chữ đỏ dưới ô', 'err'); }
+  return !errs.length;
+}
+/** định dạng tiền khi gõ, xóa báo lỗi khi sửa */
+function onModalInput(e) {
+  const t = e.target;
+  if (t.matches('[data-money]')) { const n = V.money(t.value); t.value = n ? fmt(n) : ''; }
+  const w = t.closest('.invalid'); if (w) { w.classList.remove('invalid'); const er = w.querySelector(':scope > .err'); if (er) er.textContent = ''; }
+}
+const monthOf = d => (d || '').slice(0, 7);
+const addMonth = (m, n) => { const t = new Date(m + '-01T00:00'); t.setMonth(t.getMonth() + n); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0'); };
+
+/* ---------- lịch trả nợ ---------- */
 function scheduleHtml(c) {
   const { s } = c, k = s.ky_toi;
   const row = r => `<tr class="${r.da_qua ? 'past' : k && r.ky === k.ky ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(r.goc)}${r.tra_truoc ? '<br><small>+' + fmt(r.tra_truoc) + ' trả trước</small>' : ''}${r.dao_no ? '<br><small>đảo nợ: khoản vay mới trả gốc</small>' : ''}</td><td>${fmt(r.lai)}</td><td>${fmt(r.tong)}</td>
       <td class="act">${r.da_qua ? '' : `<button type="button" class="btn sm" data-rt="from" data-loan="${c.i}" data-date="${r.tu_ngay}" title="Đổi lãi suất áp dụng từ đầu kỳ này">Đổi lãi</button>`}</td></tr>`;
   const sap = s.rows.filter(r => !r.da_qua), da = s.rows.filter(r => r.da_qua).reverse(); // sắp tới: gần nhất trước; đã trả: mới nhất trước
   const grp = (t, n) => `<tr class="grp"><td colspan="8">${t} (${n} kỳ)</td></tr>`;
-  return `<div class="sect-h"><h4><svg class="ic"><use href="#i-cal"/></svg>Lịch trả nợ</h4></div><div class="tablewrap"><table class="tbl rsp"><tr><th>Kỳ</th><th>Ngày</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th></th></tr>${
-    (sap.length ? grp('Sắp tới', sap.length) + sap.map(row).join('') : '') + (da.length ? grp('Đã trả', da.length) + da.map(row).join('') : '')
-  }</table></div>`;
+  const body = `<div class="tablewrap"><table class="tbl rsp"><tr><th>Kỳ</th><th>Ngày</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th></th></tr>${
+    (sap.length ? grp('Sắp tới', sap.length) + sap.map(row).join('') : '') + (da.length ? grp('Đã trả', da.length) + da.map(row).join('') : '')}</table></div>`;
+  return coll('sched-' + c.l.id, '<svg class="ic"><use href="#i-cal"/></svg>Lịch trả nợ', body, { cls: 'sub', sub: `${s.rows.length} kỳ · ${sap.length} kỳ sắp tới${k ? ' · kỳ tới ' + fmtD(k.ngay) : ''}` });
 }
 
-let rollEdit = null, showDone = false, openLoan = null;
+let rollEdit = null, openLoan = null;
 const loanDone = c => c.s && !c.s.ky_toi && c.s.rows.length > 0;
 const baseName = t => String(t || '').replace(/\s*\(.*\)\s*$/, '');
 /** dòng mô tả chuỗi khoản vay nối tiếp (đảo nợ) */
@@ -552,50 +600,58 @@ function chainInfo(c, loans, today) {
   const lai = [c, ...others].reduce((a, x) => a + x.s.rows.filter(r => r.da_qua).reduce((b, r) => b + r.lai, 0), 0);
   return `<p class="muted chain">Nối tiếp ${others.length} khoản vay trước (đảo nợ). Tổng lãi đã trả cả chuỗi: <b>${fmt(lai)} đ</b></p>`;
 }
+
+/* ---------- popup đảo nợ ---------- */
 function rollFormHtml(c) {
   const { l, i, s } = c, cur = currentRate(l, todayStr());
-  return `<div class="roll" id="roll-${i}"><p class="muted">Ngân hàng giải ngân khoản mới để trả gốc khoản cũ. Khoảng ngày chồng nhau (khoản mới giải ngân trước ngày khoản cũ đáo hạn) sẽ tính lãi cả hai khoản, giống trên sheet.</p>
+  return `<div class="roll" id="roll-${i}"><p class="muted">Ngân hàng giải ngân khoản mới để trả gốc khoản cũ. Nếu khoản mới giải ngân trước ngày khoản cũ đáo hạn, những ngày chồng nhau sẽ tính lãi cả hai khoản (giống sheet).</p>
     <div class="grid2 f">
-      <label>Ngày đáo hạn khoản cũ<input type="date" data-rl="end" value="${esc(l.ngay_ket_thuc || '')}"></label>
-      <label>Ngày giải ngân khoản mới<input type="date" data-rl="start"></label>
-      <label>Số tiền vay mới (đ)<input type="text" inputmode="numeric" data-rl="amt" value="${fmt(s.du_no_hien_tai || l.so_tien_vay)}"></label>
-      <label>Lãi suất khoản mới (%/năm)<input type="number" step="0.01" data-rl="rate" value="${cur ? cur.nam : ''}"></label>
-      <label>Ngày trả hằng tháng<input type="number" min="1" max="31" data-rl="day" value="${esc(l.ngay_tra || 15)}"></label>
-      <label>Tháng trả kỳ đầu (để trống = tháng sau ngày giải ngân)<input type="month" data-rl="ky"></label>
+      ${fld('Ngày đáo hạn khoản cũ *', `<input type="date" data-rl="end" value="${esc(l.ngay_ket_thuc || '')}">`, `Ngày ngân hàng thu nốt lãi và tất toán khoản cũ. Phải sau ${fmtD(l.ngay_giai_ngan)}.`)}
+      ${fld('Ngày giải ngân khoản mới *', `<input type="date" data-rl="start">`, 'Bằng hoặc trước ngày đáo hạn khoản cũ.')}
+      ${fld('Số tiền vay mới (đ) *', moneyIn('data-rl="amt"', s.du_no_hien_tai || l.so_tien_vay), `Thường bằng dư nợ khoản cũ: ${fmt(s.du_no_hien_tai || l.so_tien_vay)} đ.`)}
+      ${fld('Lãi suất khoản mới (%/năm) *', rateIn('data-rl="rate"', cur ? cur.nam : ''), 'Lãi suất năm, ví dụ 8,8.')}
+      ${fld('Ngày trả hằng tháng *', `<input type="number" min="1" max="31" step="1" inputmode="numeric" data-rl="day" value="${esc(l.ngay_tra || 15)}">`, 'Từ 1 đến 31.')}
+      ${fld('Tháng trả kỳ đầu', `<input type="month" data-rl="ky">`, 'Để trống: tháng liền sau tháng giải ngân.')}
     </div>
     <div class="actions modal-act"><button type="button" class="btn primary" data-rl-save="${i}"><svg class="ic"><use href="#i-check"/></svg>Lưu</button><button type="button" class="btn" data-rl-cancel>Hủy</button></div></div>`;
 }
 function applyRoll(i, box) {
-  const v = k => box.querySelector(`[data-rl=${k}]`).value.trim();
-  const end = v('end'), start = v('start'), amt = parseInt(v('amt').replace(/[^\d]/g, ''), 10) || 0, rate = parseFloat(v('rate').replace(',', '.')), day = +v('day') || 15;
-  if (!end || !start || !amt || isNaN(rate)) { toast('Cần nhập ngày đáo hạn, ngày giải ngân, số tiền và lãi suất', 'err'); return; }
+  const q = k => box.querySelector(`[data-rl=${k}]`), v = k => q(k).value.trim();
   const loans = JSON.parse(JSON.stringify(conf().loans || [])), old = loans[i];
-  if (start > end) { if (!confirm('Ngày giải ngân khoản mới sau ngày đáo hạn khoản cũ. Vẫn lưu?')) return; }
-  if (end <= old.ngay_giai_ngan) { toast('Ngày đáo hạn phải sau ngày giải ngân khoản cũ', 'err'); return; }
-  const nhom = old.nhom || old.id, base = baseName(old.ten);
+  const end = v('end'), start = v('start'), amt = V.money(v('amt')), rate = V.num(v('rate')), day = V.num(v('day'));
+  const E = [];
+  if (!V.isDate(end)) E.push([q('end'), 'Chọn ngày đáo hạn']); else if (end <= old.ngay_giai_ngan) E.push([q('end'), 'Phải sau ngày giải ngân khoản cũ (' + fmtD(old.ngay_giai_ngan) + ')']);
+  if (!V.isDate(start)) E.push([q('start'), 'Chọn ngày giải ngân khoản mới']);
+  else if (start <= old.ngay_giai_ngan) E.push([q('start'), 'Phải sau ngày giải ngân khoản cũ']);
+  else if (V.isDate(end) && start > end) E.push([q('start'), 'Không được sau ngày đáo hạn khoản cũ (' + fmtD(end) + ')']);
+  if (!amt) E.push([q('amt'), 'Nhập số tiền vay mới']); else if (amt > 10e9) E.push([q('amt'), 'Số tiền quá lớn, kiểm tra lại số 0']);
+  E.push([q('rate'), V.rate(v('rate'))]);
+  E.push([q('day'), V.day(v('day'))]);
   let ky = v('ky');
-  if (!ky) { const t = new Date(start + 'T00:00'); t.setDate(1); t.setMonth(t.getMonth() + 1); ky = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0'); }
+  if (ky && !V.isMonth(ky)) E.push([q('ky'), 'Chọn tháng']);
+  else if (ky && V.isDate(start) && ky < monthOf(start)) E.push([q('ky'), 'Không được trước tháng giải ngân (' + monthOf(start).split('-').reverse().join('/') + ')']);
+  if (!vShow(box, E)) return;
+  const nhom = old.nhom || old.id, base = baseName(old.ten);
+  if (!ky) ky = addMonth(monthOf(start), 1);
   Object.assign(old, { nhom, ngay_ket_thuc: end, dao_no: true, ten: `${base} (${fmtD(old.ngay_giai_ngan)} – ${fmtD(end)})` });
   loans.push({ id: nhom + '-' + start, nhom, ten: `${base} (từ ${fmtD(start)})`, kieu: old.kieu, so_tien_vay: amt, ngay_giai_ngan: start, so_thang: null,
     ngay_tra: day, goc_moi_ky: old.kieu === 'tra_gop' ? old.goc_moi_ky : 0, ky_dau: ky, lui_ngay_nghi: old.lui_ngay_nghi, nhac_truoc: old.nhac_truoc,
     lai_suat: [{ tu_ngay: start, nam: rate }], tra_truoc: [], tam_dung_goc: [], doi_ngay: {} });
   try { loans.forEach(l => LoanEngine.schedule(l, todayStr())); } catch (e) { toast('Cấu hình chưa hợp lệ: ' + e.message, 'err'); return; }
-  rollEdit = null; closeModal(); setConf('loans', loans);
+  rollEdit = null; closeModal(); openLoan = nhom + '-' + start; setConf('loans', loans);
   toast('Đã ghi đáo hạn khoản cũ ngày ' + fmtD(end) + ' và khoản vay mới từ ' + fmtD(start), 'ok');
 }
+
+/* ---------- thẻ khoản vay ---------- */
 function loanCardHtml(c, loans, today) {
   const { l, i, s } = c, k = s.ky_toi;
   const seg = k ? `<div class="seg">Cách tính lãi kỳ tới:<br>${k.chi_tiet_lai.map(p => `${fmtD(p.tu)} → ${fmtD(p.den)}: ${p.so_ngay} ngày × ${fmt(p.du_no)} × ${p.lai_suat}% / 365 = <b>${fmt(p.lai)}</b>`).join('<br>')}</div>` : '';
-  const open = openLoan === l.id;
-  return `<div class="loan acc${open ? ' open' : ''}"><button type="button" class="acc-h" data-acc="${esc(l.id)}" aria-expanded="${open}">
-      <span class="acc-t"><b>${esc(l.ten)}</b><small>${k ? `Kỳ tới ${fmtD(k.ngay)}: <b>${fmt(k.tong)} đ</b> · dư nợ ${compact(s.du_no_hien_tai)}` : 'Đã tất toán'}</small></span>
-      ${loanBadge(c)}<svg class="ic chev"><use href="#i-down"/></svg></button>
-    <div class="acc-b">${chainInfo(c, loans, today)}
-    ${loanKv(c, today)}${rateTableHtml(c)}${seg}
-    <div class="actions" style="margin-top:14px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch' : 'Lịch trả nợ'}</button>
+  const body = `${chainInfo(c, loans, today)}${loanKv(c, today)}${rateTableHtml(c)}${seg}${scheduleHtml(c)}
+    <div class="actions" style="margin-top:14px">
       <button type="button" class="btn sm" data-roll="${i}" title="Đáo hạn khoản cũ &amp; vay khoản mới"><svg class="ic"><use href="#i-sync"/></svg>Đảo nợ</button>
-      <button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa</button></div>
-    ${openSched.has(l.id) ? scheduleHtml(c) : ''}</div></div>`;
+      <button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa khoản vay</button></div>`;
+  return coll('loan-' + l.id, esc(l.ten), body, { acc: l.id, open: openLoan === l.id, cls: 'loan',
+    sub: k ? `Kỳ tới ${fmtD(k.ngay)}: <b>${fmt(k.tong)} đ</b> · dư nợ ${compact(s.du_no_hien_tai)}` : 'Đã tất toán', extra: loanBadge(c) });
 }
 function doneCardHtml(c) {
   const { l, i, s } = c, last = s.rows[s.rows.length - 1];
@@ -604,8 +660,8 @@ function doneCardHtml(c) {
     <div class="kv"><div><span>Giải ngân</span><b>${fmtD(l.ngay_giai_ngan)}</b></div><div><span>Đáo hạn</span><b>${fmtD(last.ngay)}</b></div>
       <div><span>Số tiền vay</span><b>${fmt(l.so_tien_vay)}</b></div><div><span>Lãi suất</span><b class="rate">${(l.lai_suat || []).map(r => r.nam + '%').join(' → ')}</b></div>
       <div><span>Tổng lãi đã trả</span><b>${fmt(lai)}</b></div><div><span>Số kỳ</span><b>${s.rows.length}</b></div></div>
-    <div class="actions" style="margin-top:12px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch' : 'Lịch trả nợ'}</button><button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa</button></div>
-    ${openSched.has(l.id) ? scheduleHtml(c) : ''}</div>`;
+    ${scheduleHtml(c)}
+    <div class="actions" style="margin-top:12px"><button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa</button></div></div>`;
 }
 function renderLoans() {
   const today = todayStr(), loans = conf().loans || [];
@@ -618,19 +674,17 @@ function renderLoans() {
   }
   let html = active.map(c => c.s ? loanCardHtml(c, loans, today)
     : `<div class="loan"><div class="loan-h"><h3>${esc(c.l.ten)}</h3><button class="btn sm" data-edit="${c.i}">Sửa</button></div><p class="muted">Cấu hình lỗi: ${esc(c.err)}</p></div>`).join('');
-  if (done.length) html += `<button type="button" class="btn done-toggle" data-done>${showDone ? 'Ẩn' : 'Xem'} ${done.length} khoản vay đã tất toán / đã đảo nợ <svg class="ic"><use href="#i-down"/></svg></button>${showDone ? done.map(doneCardHtml).join('') : ''}`;
+  if (done.length) html += coll('done-loans', 'Khoản vay đã tất toán / đã đảo nợ', done.map(doneCardHtml).join(''), { cls: 'loan', sub: `${done.length} khoản · tổng lãi đã trả ${fmt(done.reduce((a, c) => a + c.s.rows.reduce((b, r) => b + r.lai, 0), 0))} đ` });
   $('#loanCards').innerHTML = html;
   $('#loanCards').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.sched) { openSched.has(b.dataset.sched) ? openSched.delete(b.dataset.sched) : openSched.add(b.dataset.sched); renderLoans(); labelTables(); }
     if (b.dataset.edit) openLoanEditor(+b.dataset.edit);
-    if (b.hasAttribute('data-done')) { showDone = !showDone; renderLoans(); labelTables(); }
     if (b.dataset.roll) { const i = +b.dataset.roll, c = loanCtx(loans[i], i, today); openModal('Đáo hạn & vay khoản mới (đảo nợ)', rollFormHtml(c)); }
     if (b.dataset.acc) { openLoan = openLoan === b.dataset.acc ? '' : b.dataset.acc; renderLoans(); }
   };
 }
 
-/* ---- sửa mốc lãi suất (dùng chung cho tab Tổng hợp và tab Khoản vay) ---- */
+/* ---- sửa mốc lãi suất ---- */
 function applyLoanEdit(i, mutate, okMsg) {
   const loans = JSON.parse(JSON.stringify(conf().loans || [])), today = todayStr();
   const before = loanCtx(loans[i], i, today).s;
@@ -643,66 +697,83 @@ function applyLoanEdit(i, mutate, okMsg) {
   toast(okMsg + ' Lãi còn lại ' + (dl >= 0 ? '+' : '') + fmt(dl) + ' đ' + (nk ? '. Kỳ tới ' + fmtD(nk.ngay) + ': ' + fmt(nk.tong) + ' đ' : ''), 'ok');
   return true;
 }
+const loanEnd = l => { try { return LoanEngine.schedule(l, todayStr()).dao_han; } catch (e) { return null; } };
 function openRateModal(i, idx, date) {
-  const l = (conf().loans || [])[i], today = todayStr(), r = idx === 'new' ? null : l.lai_suat[idx], cur = currentRate(l, today);
-  openModal(idx === 'new' ? 'Thêm mốc đổi lãi suất' : 'Sửa mốc lãi suất', `<p class="muted">${esc(l.ten)}</p>
-    <div class="row"><label>Áp dụng từ ngày<input type="date" data-rf="date" value="${esc(r ? r.tu_ngay : date || today)}"></label>
-    <label>Lãi suất (%/năm)<input type="number" step="0.01" min="0" inputmode="decimal" data-rf="rate" value="${esc(r ? r.nam : cur ? cur.nam : '')}"></label></div>
+  const l = (conf().loans || [])[i], today = todayStr(), r = idx === 'new' ? null : l.lai_suat[idx], cur = currentRate(l, today), end = loanEnd(l);
+  const list = (l.lai_suat || []).slice().sort((a, b) => a.tu_ngay.localeCompare(b.tu_ngay)).map(x => `${fmtD(x.tu_ngay)}: ${x.nam}%`).join(' · ');
+  openModal(idx === 'new' ? 'Thêm mốc đổi lãi suất' : 'Sửa mốc lãi suất', `<p class="muted">${esc(l.ten)}<br>Các mốc hiện có: ${list || 'chưa có'}</p>
+    <div class="row">
+      ${fld('Áp dụng từ ngày *', `<input type="date" data-rf="date" min="${l.ngay_giai_ngan}"${end ? ` max="${end}"` : ''} value="${esc(r ? r.tu_ngay : date || today)}">`, `Ngày ngân hàng bắt đầu tính lãi mới (xem tin nhắn hoặc app ngân hàng). Từ ${fmtD(l.ngay_giai_ngan)}${end ? ' đến ' + fmtD(end) : ''}.`)}
+      ${fld('Lãi suất (%/năm) *', rateIn('data-rf="rate"', r ? r.nam : cur ? cur.nam : ''), 'Lãi suất năm, ví dụ 9,8. Không gõ dấu %.')}
+    </div>
     <p class="muted">Tiền lãi các kỳ sau ngày này, lịch trả nợ và số liệu tổng hợp sẽ tự tính lại.</p>
     <div class="actions modal-act"><button type="button" class="btn primary" data-rt="save" data-loan="${i}" data-idx="${idx}"><svg class="ic"><use href="#i-check"/></svg>Lưu</button><button type="button" class="btn" data-rt="cancel">Hủy</button></div>`);
 }
 function onRateClick(e) {
   const b = e.target.closest('[data-rt]'); if (!b) return;
   const op = b.dataset.rt, i = +b.dataset.loan, idx = b.dataset.idx === 'new' ? 'new' : +b.dataset.idx;
-  const rerender = () => { renderAll(); const t = document.getElementById('rate-' + i); if (t) t.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
   if (op === 'add' || op === 'from' || op === 'edit') { openRateModal(i, op === 'edit' ? idx : 'new', op === 'from' ? b.dataset.date : null); return; }
   if (op === 'cancel') { closeModal(); return; }
-  else if (op === 'del') {
+  if (op === 'del') {
     const l = (conf().loans || [])[i];
     if ((l.lai_suat || []).length <= 1) { toast('Phải còn ít nhất một mức lãi suất', 'err'); return; }
     const r = l.lai_suat[idx];
     if (confirm('Xóa mốc lãi suất ' + r.nam + '%/năm từ ngày ' + fmtD(r.tu_ngay) + '?\nCác kỳ sau sẽ tính theo mức lãi của mốc trước đó.')) applyLoanEdit(i, x => x.lai_suat.splice(idx, 1), 'Đã xóa mốc lãi suất.');
   } else if (op === 'save') {
-    const tr = b.closest('.modal-b'), date = tr.querySelector('[data-rf=date]').value, nam = parseFloat(String(tr.querySelector('[data-rf=rate]').value).replace(',', '.'));
-    if (!date || isNaN(nam) || nam < 0 || nam > 100) { toast('Cần nhập ngày áp dụng và lãi suất (%/năm) hợp lệ', 'err'); return; }
-    const l = (conf().loans || [])[i];
-    if ((l.lai_suat || []).some((r, k) => r.tu_ngay === date && k !== idx)) { toast('Đã có mốc lãi suất vào ngày ' + fmtD(date) + ', hãy sửa dòng đó', 'err'); return; }
+    const box = b.closest('.modal-b'), di = box.querySelector('[data-rf=date]'), ri = box.querySelector('[data-rf=rate]'), date = di.value, nam = V.num(ri.value);
+    const l = (conf().loans || [])[i], end = loanEnd(l), E = [];
+    if (!V.isDate(date)) E.push([di, 'Chọn ngày áp dụng']);
+    else if (date < l.ngay_giai_ngan) E.push([di, 'Không được trước ngày giải ngân (' + fmtD(l.ngay_giai_ngan) + ')']);
+    else if (end && date > end) E.push([di, 'Không được sau ngày đáo hạn (' + fmtD(end) + ')']);
+    else if ((l.lai_suat || []).some((r, k) => r.tu_ngay === date && k !== idx)) E.push([di, 'Đã có mốc ngày ' + fmtD(date) + ', hãy bấm Sửa ở dòng đó']);
+    E.push([ri, V.rate(ri.value)]);
+    if (idx !== 'new' && date !== l.lai_suat[idx].tu_ngay && l.lai_suat[idx].tu_ngay <= l.ngay_giai_ngan && !(l.lai_suat || []).some((r, k) => k !== idx && r.tu_ngay <= l.ngay_giai_ngan))
+      E.push([di, 'Đây là mức lãi đầu tiên, phải giữ từ ngày giải ngân ' + fmtD(l.ngay_giai_ngan)]);
+    if (!vShow(box, E)) return;
     applyLoanEdit(i, x => { if (idx === 'new') x.lai_suat.push({ tu_ngay: date, nam }); else x.lai_suat[idx] = { ...x.lai_suat[idx], tu_ngay: date, nam }; x.lai_suat.sort((a, c2) => a.tu_ngay.localeCompare(c2.tu_ngay)); },
       idx === 'new' ? 'Đã thêm mốc lãi suất ' + nam + '% từ ' + fmtD(date) + '.' : 'Đã cập nhật lãi suất.');
   }
 }
 
+/* ---------- popup thêm / sửa khoản vay ---------- */
 const LIST_DEFS = {
-  lai_suat: { title: 'Lãi suất (ghi mỗi lần ngân hàng đổi lãi)', fields: [['tu_ngay', 'date', 'Từ ngày'], ['nam', 'number', '%/năm']] },
-  tra_truoc: { title: 'Trả trước gốc', fields: [['ngay', 'date', 'Ngày'], ['so_tien', 'text', 'Số tiền'], ['ghi_chu', 'text', 'Ghi chú']] },
-  tam_dung_goc: { title: 'Tạm dừng trả gốc (các tháng chỉ trả lãi)', fields: [['tu_ky', 'month', 'Từ tháng'], ['den_ky', 'month', 'Đến tháng']] },
-  doi_ngay: { title: 'Đổi ngày trả của một tháng (lễ, Tết…)', fields: [['thang', 'month', 'Tháng'], ['ngay', 'date', 'Ngày trả thật']] },
+  lai_suat: { title: 'Lãi suất *', hint: 'Mỗi lần ngân hàng đổi lãi thì thêm một dòng. Dòng đầu tiên phải từ ngày giải ngân.',
+    fields: [['tu_ngay', 'date', 'Từ ngày'], ['nam', 'rate', '%/năm, VD 9,8']] },
+  tra_truoc: { title: 'Trả trước gốc', hint: 'Những lần trả bớt gốc ngoài lịch (ngày, số tiền, ghi chú).',
+    fields: [['ngay', 'date', 'Ngày trả'], ['so_tien', 'money', 'Số tiền'], ['ghi_chu', 'text', 'Ghi chú']] },
+  tam_dung_goc: { title: 'Tạm dừng trả gốc', hint: 'Các tháng chỉ trả lãi, không trả gốc (từ tháng … đến tháng …).',
+    fields: [['tu_ky', 'month', 'Từ tháng'], ['den_ky', 'month', 'Đến tháng']] },
+  doi_ngay: { title: 'Đổi ngày trả một tháng', hint: 'Khi ngân hàng thu khác ngày thường (lễ, Tết…): chọn tháng và ngày trả thật.',
+    fields: [['thang', 'month', 'Tháng'], ['ngay', 'date', 'Ngày trả thật']] },
 };
 function openLoanEditor(idx) {
   const loans = conf().loans || [];
   const l = idx == null ? { id: 'vay-' + Date.now().toString(36), ten: '', kieu: 'tra_gop', so_tien_vay: '', ngay_giai_ngan: todayStr(), so_thang: '', ngay_tra: 15, goc_moi_ky: '', ky_dau: '', lui_ngay_nghi: true, nhac_truoc: 5, lai_suat: [{ tu_ngay: todayStr(), nam: '' }], tra_truoc: [], tam_dung_goc: [], doi_ngay: {} } : JSON.parse(JSON.stringify(loans[idx]));
   const lists = { ...l, doi_ngay: Object.entries(l.doi_ngay || {}).map(([thang, ngay]) => ({ thang, ngay })) };
-  const f = (id, label, type, val, extra = '') => `<label>${label}<input id="le-${id}" type="${type}" value="${esc(val ?? '')}" ${extra}></label>`;
+  const inp = (k, type, ph, val) => type === 'money' ? moneyIn(`data-k="${k}" title="${ph}"`, val) : type === 'rate' ? rateIn(`data-k="${k}" title="${ph}"`, val)
+    : `<input data-k="${k}" type="${type}" placeholder="${ph}" title="${ph}" value="${esc(val ?? '')}">`;
+  const rowHtml = (def, r) => `<div class="lrow${def.fields.length === 3 ? ' three' : ''}">${def.fields.map(([k, t, ph]) => inp(k, t, ph, r[k])).join('')}<button type="button" data-delrow aria-label="Xóa dòng">✕</button><small class="err"></small></div>`;
   const listHtml = key => {
     const def = LIST_DEFS[key], rows = lists[key] || [];
-    return `<fieldset data-list="${key}"><legend>${def.title}</legend>${rows.map(r => rowHtml(def, r)).join('')}
+    return `<fieldset data-list="${key}"><legend>${def.title}</legend><small class="hint">${def.hint}</small>
+      <div class="lhead${def.fields.length === 3 ? ' three' : ''}">${def.fields.map(f => `<span>${f[2]}</span>`).join('')}<span></span></div>
+      ${rows.map(r => rowHtml(def, r)).join('')}
       <div class="actions"><button type="button" class="btn sm" data-addrow="${key}">＋ Thêm dòng</button></div></fieldset>`;
   };
-  const rowHtml = (def, r) => `<div class="lrow${def.fields.length === 3 ? ' three' : ''}">${def.fields.map(([k, t, ph]) =>
-    `<input data-k="${k}" type="${t}" placeholder="${ph}" title="${ph}" value="${esc(k === 'so_tien' && r[k] ? fmt(r[k]) : r[k] ?? '')}" ${t === 'number' ? 'step="0.01"' : ''} ${k === 'so_tien' ? 'inputmode="numeric"' : ''}>`).join('')}<button type="button" data-delrow>✕</button></div>`;
+  const ti = (id, type, val, extra = '') => `<input id="le-${id}" type="${type}" value="${esc(val ?? '')}" ${extra}>`;
   const ed = openModal(idx == null ? 'Thêm khoản vay' : 'Sửa: ' + l.ten, `
-    ${f('ten', 'Tên khoản vay', 'text', l.ten, 'placeholder="VD: Vay mua ô tô"')}
-    <div class="grid2">
-      <label>Cách trả<select id="le-kieu"><option value="tra_gop">Trả góp gốc đều hằng tháng</option><option value="tra_lai">Hằng tháng trả lãi, gốc trả cuối kỳ</option></select></label>
-      ${f('so_tien_vay', 'Số tiền vay (đ)', 'text', l.so_tien_vay ? fmt(l.so_tien_vay) : '', 'inputmode="numeric"')}
-      ${f('ngay_giai_ngan', 'Ngày giải ngân', 'date', l.ngay_giai_ngan)}
-      ${f('so_thang', 'Thời hạn (tháng)', 'number', l.so_thang, 'placeholder="để trống nếu chưa biết"')}
-      ${f('ngay_tra', 'Ngày trả hằng tháng', 'number', l.ngay_tra, 'min="1" max="31"')}
-      ${f('goc_moi_ky', 'Gốc mỗi kỳ (đ)', 'text', l.goc_moi_ky ? fmt(l.goc_moi_ky) : '', 'inputmode="numeric"')}
-      ${f('ky_dau', 'Tháng trả kỳ đầu', 'month', l.ky_dau)}
-      ${f('nhac_truoc', 'Nhắc trước (ngày)', 'number', l.nhac_truoc)}
-      ${f('ngay_ket_thuc', 'Ngày đáo hạn cụ thể (nếu có)', 'date', l.ngay_ket_thuc)}
-      ${f('nhom', 'Nhóm (các khoản đảo nợ nối tiếp)', 'text', l.nhom, 'placeholder="VD: nha"')}
+    ${fld('Tên khoản vay *', ti('ten', 'text', l.ten, 'maxlength="60" placeholder="VD: Vay mua ô tô"'), 'Tên ngắn để nhận ra khoản vay, tối đa 60 ký tự.')}
+    <div class="grid2 f">
+      ${fld('Cách trả *', `<select id="le-kieu"><option value="tra_gop">Trả góp: gốc đều hằng tháng + lãi</option><option value="tra_lai">Hằng tháng trả lãi, gốc trả cuối kỳ</option></select>`, 'Vay mua xe thường là trả góp; vay thế chấp ngắn hạn thường chỉ trả lãi.')}
+      ${fld('Số tiền vay (đ) *', moneyIn('id="le-so_tien_vay"', l.so_tien_vay), 'Số tiền ngân hàng giải ngân, ví dụ 450.000.000.')}
+      ${fld('Ngày giải ngân *', ti('ngay_giai_ngan', 'date', l.ngay_giai_ngan), 'Ngày bắt đầu tính lãi.')}
+      ${fld('Thời hạn (tháng)', ti('so_thang', 'number', l.so_thang, 'min="1" max="480" step="1" inputmode="numeric" placeholder="VD: 84"'), 'Ví dụ 84 tháng = 7 năm. Để trống nếu dùng "Ngày đáo hạn cụ thể" hoặc chưa biết.')}
+      ${fld('Ngày trả hằng tháng *', ti('ngay_tra', 'number', l.ngay_tra, 'min="1" max="31" step="1" inputmode="numeric"'), 'Từ 1 đến 31. Tháng không có ngày đó thì trả ngày cuối tháng.')}
+      ${fld('Gốc mỗi kỳ (đ)', moneyIn('id="le-goc_moi_ky"', l.goc_moi_ky), 'Bắt buộc với trả góp, ví dụ 5.350.000. Bỏ trống nếu chỉ trả lãi.')}
+      ${fld('Tháng trả kỳ đầu', ti('ky_dau', 'month', l.ky_dau), 'Để trống: tháng liền sau tháng giải ngân.')}
+      ${fld('Nhắc trước (ngày)', ti('nhac_truoc', 'number', l.nhac_truoc, 'min="0" max="30" step="1" inputmode="numeric"'), 'Cảnh báo trên trang và Telegram trước hạn bao nhiêu ngày (0–30).')}
+      ${fld('Ngày đáo hạn cụ thể', ti('ngay_ket_thuc', 'date', l.ngay_ket_thuc), 'Nếu ngân hàng ghi rõ ngày đáo hạn. Có ngày này thì không cần thời hạn.')}
+      ${fld('Nhóm', ti('nhom', 'text', l.nhom, 'maxlength="30" placeholder="VD: nha"'), 'Các khoản đảo nợ nối tiếp nhau dùng chung một nhóm (chữ không dấu, không khoảng trắng).')}
     </div>
     <label class="chk"><input id="le-dao" type="checkbox" ${l.dao_no ? 'checked' : ''}> Gốc cuối kỳ trả bằng khoản vay mới (đảo nợ)</label>
     <label class="chk"><input id="le-lui" type="checkbox" ${l.lui_ngay_nghi !== false ? 'checked' : ''}> Rơi vào thứ 7, chủ nhật thì dời sang thứ 2</label>
@@ -711,7 +782,7 @@ function openLoanEditor(idx) {
   $('#le-kieu').value = l.kieu || 'tra_gop';
   ed.onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.addrow) { const key = b.dataset.addrow; b.closest('.actions').insertAdjacentHTML('beforebegin', rowHtml(LIST_DEFS[key], {})); }
+    if (b.dataset.addrow) { const key = b.dataset.addrow; b.closest('.actions').insertAdjacentHTML('beforebegin', rowHtml(LIST_DEFS[key], {})); const n = b.closest('fieldset').querySelector('.lrow:last-of-type input'); if (n) n.focus(); }
     if (b.hasAttribute('data-delrow')) b.closest('.lrow').remove();
   };
   $('#le-cancel').onclick = closeModal;
@@ -720,26 +791,67 @@ function openLoanEditor(idx) {
     const next = loans.slice(); next.splice(idx, 1); closeModal(); setConf('loans', next);
   };
   $('#le-save').onclick = () => {
-    const num = id => parseInt(String($('#le-' + id).value).replace(/[^\d]/g, ''), 10) || 0;
-    const out = { ...l, ten: $('#le-ten').value.trim(), kieu: $('#le-kieu').value, so_tien_vay: num('so_tien_vay'),
-      ngay_giai_ngan: $('#le-ngay_giai_ngan').value, so_thang: $('#le-so_thang').value ? +$('#le-so_thang').value : null,
-      ngay_tra: +$('#le-ngay_tra').value || 15, goc_moi_ky: num('goc_moi_ky'), ky_dau: $('#le-ky_dau').value,
-      nhac_truoc: $('#le-nhac_truoc').value === '' ? 5 : +$('#le-nhac_truoc').value, lui_ngay_nghi: $('#le-lui').checked,
-      ngay_ket_thuc: $('#le-ngay_ket_thuc').value || undefined, nhom: $('#le-nhom').value.trim() || undefined, dao_no: $('#le-dao').checked || undefined };
-    for (const key of Object.keys(LIST_DEFS)) {
-      const rows = [...ed.querySelectorAll(`fieldset[data-list="${key}"] .lrow`)].map(row => {
-        const o = {}; row.querySelectorAll('input').forEach(inp => { o[inp.dataset.k] = inp.value.trim(); }); return o;
-      }).filter(o => Object.values(o).some(Boolean));
-      if (key === 'lai_suat') out.lai_suat = rows.map(r => ({ tu_ngay: r.tu_ngay, nam: parseFloat(String(r.nam).replace(',', '.')) })).filter(r => r.tu_ngay && !isNaN(r.nam));
-      if (key === 'tra_truoc') out.tra_truoc = rows.map(r => ({ ngay: r.ngay, so_tien: parseInt(String(r.so_tien).replace(/[^\d]/g, ''), 10) || 0, ghi_chu: r.ghi_chu || '' })).filter(r => r.ngay && r.so_tien);
-      if (key === 'tam_dung_goc') out.tam_dung_goc = rows.filter(r => r.tu_ky && r.den_ky);
-      if (key === 'doi_ngay') out.doi_ngay = Object.fromEntries(rows.filter(r => r.thang && r.ngay).map(r => [r.thang, r.ngay]));
+    const g = id => $('#le-' + id), val = id => g(id).value.trim(), E = [];
+    const out = { ...l, ten: val('ten'), kieu: val('kieu'), so_tien_vay: V.money(val('so_tien_vay')), ngay_giai_ngan: val('ngay_giai_ngan'),
+      so_thang: val('so_thang') ? V.num(val('so_thang')) : null, ngay_tra: V.num(val('ngay_tra')), goc_moi_ky: V.money(val('goc_moi_ky')), ky_dau: val('ky_dau'),
+      nhac_truoc: val('nhac_truoc') === '' ? 5 : V.num(val('nhac_truoc')), lui_ngay_nghi: g('lui').checked,
+      ngay_ket_thuc: val('ngay_ket_thuc') || undefined, nhom: val('nhom') || undefined, dao_no: g('dao').checked || undefined };
+    const gd = out.ngay_giai_ngan, okGd = V.isDate(gd);
+    if (!out.ten) E.push([g('ten'), 'Nhập tên khoản vay']);
+    if (!out.so_tien_vay) E.push([g('so_tien_vay'), 'Nhập số tiền vay']); else if (out.so_tien_vay > 10e9) E.push([g('so_tien_vay'), 'Số tiền quá lớn, kiểm tra lại số 0']);
+    if (!okGd) E.push([g('ngay_giai_ngan'), 'Chọn ngày giải ngân']);
+    if (out.so_thang != null && (!Number.isInteger(out.so_thang) || out.so_thang < 1 || out.so_thang > 480)) E.push([g('so_thang'), 'Nhập số tháng nguyên từ 1 đến 480']);
+    E.push([g('ngay_tra'), V.day(val('ngay_tra'))]);
+    if (out.kieu === 'tra_gop') {
+      if (!out.goc_moi_ky) E.push([g('goc_moi_ky'), 'Trả góp cần nhập gốc mỗi kỳ']);
+      else if (out.goc_moi_ky > out.so_tien_vay) E.push([g('goc_moi_ky'), 'Gốc mỗi kỳ không được lớn hơn số tiền vay']);
     }
-    if (!out.ten || !out.so_tien_vay || !out.ngay_giai_ngan || !out.lai_suat.length) { toast('Cần tên, số tiền vay, ngày giải ngân và ít nhất một mức lãi suất', 'err'); return; }
-    if (out.kieu === 'tra_gop' && !out.goc_moi_ky) { toast('Trả góp cần nhập gốc mỗi kỳ', 'err'); return; }
+    if (out.ky_dau && !V.isMonth(out.ky_dau)) E.push([g('ky_dau'), 'Chọn tháng']);
+    else if (out.ky_dau && okGd && out.ky_dau < monthOf(gd)) E.push([g('ky_dau'), 'Không được trước tháng giải ngân']);
+    if (!Number.isInteger(out.nhac_truoc) || out.nhac_truoc < 0 || out.nhac_truoc > 30) E.push([g('nhac_truoc'), 'Nhập số ngày nguyên từ 0 đến 30']);
+    if (out.ngay_ket_thuc && okGd && out.ngay_ket_thuc <= gd) E.push([g('ngay_ket_thuc'), 'Phải sau ngày giải ngân']);
+    if (out.nhom && !/^[a-z0-9_-]+$/i.test(out.nhom)) E.push([g('nhom'), 'Chỉ dùng chữ không dấu, số, gạch ngang (VD: nha)']);
+    // các danh sách
+    const rowsOf = key => [...ed.querySelectorAll(`fieldset[data-list="${key}"] .lrow`)].map(row => {
+      const o = { _row: row }; row.querySelectorAll('input').forEach(i => { o[i.dataset.k] = i.value.trim(); o['_' + i.dataset.k] = i; }); return o;
+    }).filter(o => LIST_DEFS[key].fields.some(([k]) => o[k]));
+    const inRange = d => !okGd || d >= gd;
+    const ls = rowsOf('lai_suat');
+    if (!ls.length) E.push([ed.querySelector('[data-addrow=lai_suat]'), 'Cần ít nhất một mức lãi suất']);
+    ls.forEach(r => {
+      if (!V.isDate(r.tu_ngay)) E.push([r._tu_ngay, 'Dòng lãi suất: chọn ngày']); else if (!inRange(r.tu_ngay)) E.push([r._tu_ngay, 'Ngày đổi lãi không được trước ngày giải ngân']);
+      const m = V.rate(r.nam); if (m) E.push([r._nam, 'Dòng lãi suất: ' + m.toLowerCase()]);
+    });
+    const dates = ls.map(r => r.tu_ngay).filter(Boolean);
+    ls.forEach(r => { if (r.tu_ngay && dates.filter(d => d === r.tu_ngay).length > 1) E.push([r._tu_ngay, 'Trùng ngày với một dòng lãi suất khác']); });
+    if (okGd && dates.length && !dates.some(d => d <= gd)) E.push([ls[0]._tu_ngay, 'Phải có một mức lãi từ ngày giải ngân ' + fmtD(gd)]);
+    const tt = rowsOf('tra_truoc');
+    tt.forEach(r => {
+      if (!V.isDate(r.ngay)) E.push([r._ngay, 'Chọn ngày trả trước']); else if (!inRange(r.ngay)) E.push([r._ngay, 'Ngày trả trước không được trước ngày giải ngân']);
+      const n = V.money(r.so_tien); if (!n) E.push([r._so_tien, 'Nhập số tiền trả trước']); else if (n > out.so_tien_vay) E.push([r._so_tien, 'Lớn hơn số tiền vay']);
+    });
+    const td = rowsOf('tam_dung_goc');
+    td.forEach(r => {
+      if (!V.isMonth(r.tu_ky)) E.push([r._tu_ky, 'Chọn tháng bắt đầu']);
+      if (!V.isMonth(r.den_ky)) E.push([r._den_ky, 'Chọn tháng kết thúc']);
+      else if (V.isMonth(r.tu_ky) && r.den_ky < r.tu_ky) E.push([r._den_ky, '"Đến tháng" phải sau hoặc bằng "Từ tháng"']);
+    });
+    const dn = rowsOf('doi_ngay');
+    dn.forEach(r => {
+      if (!V.isMonth(r.thang)) E.push([r._thang, 'Chọn tháng']);
+      if (!V.isDate(r.ngay)) E.push([r._ngay, 'Chọn ngày trả thật']);
+      else if (V.isMonth(r.thang) && Math.abs((new Date(r.ngay + 'T00:00') - new Date(r.thang + '-15T00:00')) / 864e5) > 31) E.push([r._ngay, 'Ngày trả thật phải gần tháng đã chọn']);
+    });
+    if (new Set(dn.map(r => r.thang)).size < dn.length) E.push([dn[dn.length - 1]._thang, 'Trùng tháng với dòng khác']);
+    if (!vShow(ed, E)) return;
+    out.lai_suat = ls.map(r => ({ tu_ngay: r.tu_ngay, nam: V.num(r.nam) })).sort((a, b) => a.tu_ngay.localeCompare(b.tu_ngay));
+    out.tra_truoc = tt.map(r => ({ ngay: r.ngay, so_tien: V.money(r.so_tien), ghi_chu: r.ghi_chu || '' }));
+    out.tam_dung_goc = td.map(r => ({ tu_ky: r.tu_ky, den_ky: r.den_ky }));
+    out.doi_ngay = Object.fromEntries(dn.map(r => [r.thang, r.ngay]));
+    if (out.kieu === 'tra_lai') out.goc_moi_ky = 0;
     try { LoanEngine.schedule(out, todayStr()); } catch (e) { toast('Cấu hình chưa hợp lệ: ' + e.message, 'err'); return; }
     const next = loans.slice(); if (idx == null) next.push(out); else next[idx] = out;
-    closeModal(); setConf('loans', next); toast('Đã lưu khoản vay', 'ok');
+    closeModal(); if (idx == null) openLoan = out.id; setConf('loans', next); toast('Đã lưu khoản vay', 'ok');
   };
 }
 
@@ -894,7 +1006,10 @@ function renderBudgetForm() {
   if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#budgetForm')) return;
   const b = conf().budgets || {};
   $('#budgetForm').innerHTML = CATS_ABC.filter(c => c !== 'Chưa rõ').map(c =>
-    `<span>${esc(c)}</span><input data-cat="${esc(c)}" inputmode="numeric" placeholder="—" value="${b[c] ? fmt(b[c]) : ''}">`).join('');
+    `<span>${esc(c)}</span><input data-cat="${esc(c)}" data-money inputmode="numeric" placeholder="—" value="${b[c] ? fmt(b[c]) : ''}">`).join('');
+  const n = Object.values(b).filter(Boolean).length;
+  $('#budgetSub').textContent = n ? `Đã đặt ${n} hạng mục · tổng ${fmt(Object.values(b).reduce((a, x) => a + (+x || 0), 0))} đ/tháng` : 'Chưa đặt hạng mục nào';
+  const bc = $('#budgetColl'); if (bc) bc.classList.toggle('open', collOpen.has('budget'));
 }
 function saveBudgets() {
   const out = {};
@@ -1013,6 +1128,8 @@ function init() {
   $('#ds-view').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { dsView = b.dataset.view; save('cthn.dsview', dsView); renderList(); } });
   $('#dsList').addEventListener('click', e => { const b = e.target.closest('.more'); if (b) { const k = b.dataset.more; dsLimit[k] = (dsLimit[k] || (k === 'ngay' ? 300 : 80)) + 200; renderList(); } });
   document.addEventListener('click', onRateClick);
+  document.addEventListener('click', onCollClick);
+  document.addEventListener('input', onModalInput);
   $('#th-view').addEventListener('click', e => { const x = e.target.closest('button'); if (x) { thView = x.dataset.v; save('cthn.thview', thView); renderAll(); } });
   $('#th-no').addEventListener('click', e => {
     const y = e.target.closest('[data-dy]') || e.target.closest('#debt-years tr[data-y]') || e.target.closest('.yi[data-y]');

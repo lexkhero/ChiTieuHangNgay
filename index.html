@@ -177,11 +177,13 @@
               <div class="actions"><button class="btn" id="tgTest"><svg class="ic"><use href="#i-bell"/></svg>Gửi tin nhắn thử</button></div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-h"><h2>Ngân sách tháng theo hạng mục</h2></div>
-            <p class="muted">Để trống nếu không đặt. Khi chi tới 90% sẽ có cảnh báo trên trang và qua Telegram.</p>
-            <div id="budgetForm" class="budget"></div>
-            <div class="actions"><button class="btn primary" id="budgetSave">Lưu ngân sách</button></div>
+          <div class="coll card-coll" data-coll="budget" id="budgetColl">
+            <button type="button" class="coll-h" aria-expanded="false"><span class="coll-t"><b>Ngân sách tháng theo hạng mục</b><small id="budgetSub"></small></span><svg class="ic chev"><use href="#i-down"/></svg></button>
+            <div class="coll-b">
+              <p class="muted">Mức chi tối đa mỗi tháng cho từng hạng mục, tính chung cả nhà. Để trống nếu không đặt. Khi chi tới 90% sẽ có cảnh báo trên trang và qua Telegram.</p>
+              <div id="budgetForm" class="budget"></div>
+              <div class="actions"><button class="btn primary" id="budgetSave">Lưu ngân sách</button></div>
+            </div>
           </div>
           <div class="card">
             <div class="card-h"><h2>Khác</h2></div>

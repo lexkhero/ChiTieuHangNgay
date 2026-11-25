@@ -62,7 +62,8 @@ var LoanEngine = (function () {
     for (var m = first; ; m = addMonths(m, 1, 1)) {
       var key = ym(m), due;
       if (loan.doi_ngay && loan.doi_ngay[key]) due = d(loan.doi_ngay[key]);
-      else due = Date.UTC(new Date(m).getUTCFullYear(), new Date(m).getUTCMonth(), day);
+      else { var yy = new Date(m).getUTCFullYear(), mm = new Date(m).getUTCMonth(), last = new Date(Date.UTC(yy, mm + 1, 0)).getUTCDate();
+        due = Date.UTC(yy, mm, Math.min(day, last)); }   // tháng không có ngày 29/30/31 thì lấy ngày cuối tháng
       if (loan.lui_ngay_nghi !== false && !(loan.doi_ngay && loan.doi_ngay[key])) due = rollWeekend(due);
       var isLast = false;
       if (maturity && (exactEnd ? due >= maturity : (ym(maturity) === key || due >= maturity))) { due = maturity; isLast = true; key = ym(due); }
