@@ -272,3 +272,9 @@ select.slim { max-width: 100%; }
   .tbl.rsp td small { white-space: normal; flex-basis: 100%; text-align: right; margin-top: -2px; }
   .tbl.rsp td::before { margin-right: auto; }
 }
+.chain { margin: -6px 0 12px; }
+.roll { margin-top: 14px; border-color: color-mix(in srgb, var(--ac) 45%, var(--line)); box-shadow: none; }
+.roll h4 { margin: 0 0 6px; font-size: 14px; }
+.done-toggle { width: 100%; margin: 4px 0 16px; justify-content: center; color: var(--tx2); }
+.loan.done { opacity: .9; }
+.loan.done .kv b { font-size: 14px; }

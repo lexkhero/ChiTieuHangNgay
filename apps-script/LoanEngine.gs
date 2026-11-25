@@ -13,7 +13,10 @@
  *   tra_truoc:  [{ ngay: 'YYYY-MM-DD', so_tien, ghi_chu }],
  *   tam_dung_goc: [{ tu_ky: 'YYYY-MM', den_ky: 'YYYY-MM' }],
  *   doi_ngay:   { 'YYYY-MM': 'YYYY-MM-DD' }  -> ngày trả thực tế khác lịch (lễ, Tết…),
- *   nhac_truoc: 5
+ *   nhac_truoc: 5,
+ *   ngay_ket_thuc: 'YYYY-MM-DD'  -> ngày đáo hạn cụ thể (thay cho so_thang); trước ngày này vẫn trả theo lịch thường,
+ *   dao_no: true  -> gốc cuối kỳ được trả bằng khoản vay mới (đảo nợ), không tính là tiền gốc bỏ ra,
+ *   nhom: 'nha'   -> các khoản vay nối tiếp nhau (đảo nợ) cùng một nhóm
  * }
  */
 var LoanEngine = (function () {
@@ -46,7 +49,8 @@ var LoanEngine = (function () {
   function schedule(loan, homNay, soKyDuPhong) {
     var today = d(homNay || new Date().toISOString().slice(0, 10));
     var start = d(loan.ngay_giai_ngan);
-    var maturity = loan.so_thang ? addMonths(start, +loan.so_thang) : null;
+    var exactEnd = !!loan.ngay_ket_thuc;
+    var maturity = exactEnd ? d(loan.ngay_ket_thuc) : (loan.so_thang ? addMonths(start, +loan.so_thang) : null);
     var day = +loan.ngay_tra || new Date(start).getUTCDate();
     var first = loan.ky_dau ? d(loan.ky_dau + '-01') : addMonths(start, 1, 1);
     var horizon = maturity || addMonths(Math.max(today, first), soKyDuPhong || 24, 1);
@@ -61,7 +65,7 @@ var LoanEngine = (function () {
       else due = Date.UTC(new Date(m).getUTCFullYear(), new Date(m).getUTCMonth(), day);
       if (loan.lui_ngay_nghi !== false && !(loan.doi_ngay && loan.doi_ngay[key])) due = rollWeekend(due);
       var isLast = false;
-      if (maturity && (ym(maturity) === key || due >= maturity)) { due = maturity; isLast = true; }
+      if (maturity && (exactEnd ? due >= maturity : (ym(maturity) === key || due >= maturity))) { due = maturity; isLast = true; key = ym(due); }
       if (!maturity && m > horizon) break;
       if (bal <= 0) break;
 
@@ -84,8 +88,9 @@ var LoanEngine = (function () {
       k++;
       rows.push({
         ky: k, thang: key, ngay: iso(due), tu_ngay: iso(prev), so_ngay: Math.round((due - prev) / DAY),
-        du_no_dau: bal, goc: g, lai: Math.round(lai), tong: Math.round(lai) + g, tra_truoc: prepaid,
-        chi_tiet_lai: parts, da_qua: due <= today, cuoi: isLast
+        du_no_dau: bal, goc: g, lai: Math.round(lai), tong: Math.round(lai) + (isLast && loan.dao_no ? 0 : g), tra_truoc: prepaid,
+        chi_tiet_lai: parts, da_qua: due <= today, cuoi: isLast,
+        dao_no: !!(isLast && loan.dao_no && g > 0)   // gốc này trả bằng khoản vay mới
       });
       bal -= g; prev = due;
       if (isLast) break;
@@ -113,7 +118,7 @@ var LoanEngine = (function () {
     (loans || []).forEach(function (l) {
       schedule(l, homNay).rows.forEach(function (r) {
         var o = out[r.thang] || (out[r.thang] = { goc: 0, lai: 0, tra_truoc: 0 });
-        o.goc += r.goc; o.lai += r.lai; o.tra_truoc += r.tra_truoc;
+        if (!r.dao_no) o.goc += r.goc; o.lai += r.lai; o.tra_truoc += r.tra_truoc;
       });
     });
     return out;

@@ -423,10 +423,11 @@ function debtTotals(loans, y, m) {
   loans.forEach((l, i) => {
     const c = loanCtx(l, i, todayStr()); if (!c.s) return;
     duNo += c.s.du_no_hien_tai;
-    c.s.rows.forEach(r => { if (r.thang.startsWith(y) && (!m || r.thang === m)) { goc += r.goc + r.tra_truoc; lai += r.lai; } });
+    c.s.rows.forEach(r => { if (r.thang.startsWith(y) && (!m || r.thang === m)) { goc += cg(r) + r.tra_truoc; lai += r.lai; } });
   });
   return { goc, lai, duNo };
 }
+const cg = r => (r.dao_no ? 0 : r.goc); // gốc trả bằng tiền thật (đảo nợ thì gốc do khoản vay mới trả)
 const rowRates = r => [...new Set(r.chi_tiet_lai.map(p => p.lai_suat))].map(x => x + '%').join(' → ');
 const currentRate = (l, today) => (l.lai_suat || []).filter(r => r.tu_ngay <= today).sort((a, b) => a.tu_ngay.localeCompare(b.tu_ngay)).pop();
 
@@ -438,7 +439,7 @@ function loanBadge(c) {
 function loanKv(c, today) {
   const { l, s } = c, k = s.ky_toi; if (!k) return '';
   const rate = currentRate(l, today), paid = s.rows.filter(r => r.da_qua);
-  const gocDaTra = paid.reduce((a, r) => a + r.goc + r.tra_truoc, 0), laiDaTra = paid.reduce((a, r) => a + r.lai, 0);
+  const gocDaTra = paid.reduce((a, r) => a + cg(r) + r.tra_truoc, 0), laiDaTra = paid.reduce((a, r) => a + r.lai, 0);
   return `<div class="kv">
     <div class="big"><span>Kỳ tới ${fmtD(k.ngay)}: gốc ${fmt(k.goc)} + lãi ${fmt(k.lai)}</span><b>${fmt(k.tong)} đ</b>${k.chi_tiet_lai.length > 1 ? `<small class="split">Lãi gồm: ${k.chi_tiet_lai.map(p => `${fmt(p.lai)} (${p.lai_suat}%, ${dmy(p.tu)}→${dmy(p.den)}, ${p.so_ngay} ngày)`).join(' + ')}</small>` : ''}</div>
     <div><span>Dư nợ hiện tại</span><b>${fmt(s.du_no_hien_tai)}</b></div>
@@ -492,28 +493,91 @@ function rateTableHtml(c) {
 function scheduleHtml(c) {
   const { s } = c, k = s.ky_toi;
   return `<div class="sect-h"><h4><svg class="ic"><use href="#i-cal"/></svg>Lịch trả nợ</h4></div><div class="tablewrap"><table class="tbl rsp"><tr><th>Kỳ</th><th>Ngày</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th></th></tr>${
-    s.rows.map(r => `<tr class="${r.da_qua ? 'past' : k && r.ky === k.ky ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(r.goc)}${r.tra_truoc ? '<br><small>+' + fmt(r.tra_truoc) + ' trả trước</small>' : ''}</td><td>${fmt(r.lai)}</td><td>${fmt(r.tong)}</td>
+    s.rows.map(r => `<tr class="${r.da_qua ? 'past' : k && r.ky === k.ky ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(r.goc)}${r.tra_truoc ? '<br><small>+' + fmt(r.tra_truoc) + ' trả trước</small>' : ''}${r.dao_no ? '<br><small>đảo nợ: khoản vay mới trả gốc</small>' : ''}</td><td>${fmt(r.lai)}</td><td>${fmt(r.tong)}</td>
       <td class="act">${r.da_qua ? '' : `<button type="button" class="btn sm" data-rt="from" data-loan="${c.i}" data-date="${r.tu_ngay}" title="Đổi lãi suất áp dụng từ đầu kỳ này">Đổi lãi</button>`}</td></tr>`).join('')
   }</table></div>`;
 }
 
+let rollEdit = null, showDone = false;
+const loanDone = c => c.s && !c.s.ky_toi && c.s.rows.length > 0;
+const baseName = t => String(t || '').replace(/\s*\(.*\)\s*$/, '');
+/** dòng mô tả chuỗi khoản vay nối tiếp (đảo nợ) */
+function chainInfo(c, loans, today) {
+  const g = c.l.nhom; if (!g) return '';
+  const others = loans.map((l, i) => loanCtx(l, i, today)).filter(x => x.l.nhom === g && x.i !== c.i && x.s);
+  if (!others.length) return '';
+  const lai = [c, ...others].reduce((a, x) => a + x.s.rows.filter(r => r.da_qua).reduce((b, r) => b + r.lai, 0), 0);
+  return `<p class="muted chain">Nối tiếp ${others.length} khoản vay trước (đảo nợ). Tổng lãi đã trả cả chuỗi: <b>${fmt(lai)} đ</b></p>`;
+}
+function rollFormHtml(c) {
+  const { l, i, s } = c, cur = currentRate(l, todayStr());
+  return `<div class="roll card" id="roll-${i}"><h4>Đáo hạn &amp; vay khoản mới (đảo nợ)</h4>
+    <p class="muted">Ngân hàng giải ngân khoản mới để trả gốc khoản cũ. Khoảng ngày chồng nhau (khoản mới giải ngân trước ngày khoản cũ đáo hạn) sẽ tính lãi cả hai khoản, giống trên sheet.</p>
+    <div class="grid2 f">
+      <label>Ngày đáo hạn khoản cũ<input type="date" data-rl="end" value="${esc(l.ngay_ket_thuc || '')}"></label>
+      <label>Ngày giải ngân khoản mới<input type="date" data-rl="start"></label>
+      <label>Số tiền vay mới (đ)<input type="text" inputmode="numeric" data-rl="amt" value="${fmt(s.du_no_hien_tai || l.so_tien_vay)}"></label>
+      <label>Lãi suất khoản mới (%/năm)<input type="number" step="0.01" data-rl="rate" value="${cur ? cur.nam : ''}"></label>
+      <label>Ngày trả hằng tháng<input type="number" min="1" max="31" data-rl="day" value="${esc(l.ngay_tra || 15)}"></label>
+      <label>Tháng trả kỳ đầu (để trống = tháng sau ngày giải ngân)<input type="month" data-rl="ky"></label>
+    </div>
+    <div class="actions"><button type="button" class="btn sm primary" data-rl-save="${i}"><svg class="ic"><use href="#i-check"/></svg>Lưu</button><button type="button" class="btn sm" data-rl-cancel>Hủy</button></div></div>`;
+}
+function applyRoll(i, box) {
+  const v = k => box.querySelector(`[data-rl=${k}]`).value.trim();
+  const end = v('end'), start = v('start'), amt = parseInt(v('amt').replace(/[^\d]/g, ''), 10) || 0, rate = parseFloat(v('rate').replace(',', '.')), day = +v('day') || 15;
+  if (!end || !start || !amt || isNaN(rate)) { toast('Cần nhập ngày đáo hạn, ngày giải ngân, số tiền và lãi suất', 'err'); return; }
+  const loans = JSON.parse(JSON.stringify(conf().loans || [])), old = loans[i];
+  if (start > end) { if (!confirm('Ngày giải ngân khoản mới sau ngày đáo hạn khoản cũ. Vẫn lưu?')) return; }
+  if (end <= old.ngay_giai_ngan) { toast('Ngày đáo hạn phải sau ngày giải ngân khoản cũ', 'err'); return; }
+  const nhom = old.nhom || old.id, base = baseName(old.ten);
+  let ky = v('ky');
+  if (!ky) { const t = new Date(start + 'T00:00'); t.setDate(1); t.setMonth(t.getMonth() + 1); ky = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0'); }
+  Object.assign(old, { nhom, ngay_ket_thuc: end, dao_no: true, ten: `${base} (${fmtD(old.ngay_giai_ngan)} – ${fmtD(end)})` });
+  loans.push({ id: nhom + '-' + start, nhom, ten: `${base} (từ ${fmtD(start)})`, kieu: old.kieu, so_tien_vay: amt, ngay_giai_ngan: start, so_thang: null,
+    ngay_tra: day, goc_moi_ky: old.kieu === 'tra_gop' ? old.goc_moi_ky : 0, ky_dau: ky, lui_ngay_nghi: old.lui_ngay_nghi, nhac_truoc: old.nhac_truoc,
+    lai_suat: [{ tu_ngay: start, nam: rate }], tra_truoc: [], tam_dung_goc: [], doi_ngay: {} });
+  try { loans.forEach(l => LoanEngine.schedule(l, todayStr())); } catch (e) { toast('Cấu hình chưa hợp lệ: ' + e.message, 'err'); return; }
+  rollEdit = null; setConf('loans', loans);
+  toast('Đã ghi đáo hạn khoản cũ ngày ' + fmtD(end) + ' và khoản vay mới từ ' + fmtD(start), 'ok');
+}
+function loanCardHtml(c, loans, today) {
+  const { l, i, s } = c, k = s.ky_toi;
+  const seg = k ? `<div class="seg">Cách tính lãi kỳ tới:<br>${k.chi_tiet_lai.map(p => `${fmtD(p.tu)} → ${fmtD(p.den)}: ${p.so_ngay} ngày × ${fmt(p.du_no)} × ${p.lai_suat}% / 365 = <b>${fmt(p.lai)}</b>`).join('<br>')}</div>` : '';
+  return `<div class="loan"><div class="loan-h"><h3>${esc(l.ten)}</h3>${loanBadge(c)}</div>${chainInfo(c, loans, today)}
+    ${loanKv(c, today)}${rateTableHtml(c)}${seg}
+    <div class="actions" style="margin-top:14px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch trả nợ' : 'Xem lịch trả nợ'}</button>
+      <button type="button" class="btn sm" data-roll="${i}"><svg class="ic"><use href="#i-sync"/></svg>Đáo hạn &amp; vay khoản mới</button>
+      <button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa khoản vay</button></div>
+    ${rollEdit === i ? rollFormHtml(c) : ''}${openSched.has(l.id) ? scheduleHtml(c) : ''}</div>`;
+}
+function doneCardHtml(c) {
+  const { l, i, s } = c, last = s.rows[s.rows.length - 1];
+  const lai = s.rows.reduce((a, r) => a + r.lai, 0);
+  return `<div class="loan done"><div class="loan-h"><h3>${esc(l.ten)}</h3><span class="badge">${l.dao_no ? 'Đã đáo hạn, đảo nợ' : 'Đã tất toán'}</span></div>
+    <div class="kv"><div><span>Giải ngân</span><b>${fmtD(l.ngay_giai_ngan)}</b></div><div><span>Đáo hạn</span><b>${fmtD(last.ngay)}</b></div>
+      <div><span>Số tiền vay</span><b>${fmt(l.so_tien_vay)}</b></div><div><span>Lãi suất</span><b class="rate">${(l.lai_suat || []).map(r => r.nam + '%').join(' → ')}</b></div>
+      <div><span>Tổng lãi đã trả</span><b>${fmt(lai)}</b></div><div><span>Số kỳ</span><b>${s.rows.length}</b></div></div>
+    <div class="actions" style="margin-top:12px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch trả nợ' : 'Xem lịch trả nợ'}</button><button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa</button></div>
+    ${openSched.has(l.id) ? scheduleHtml(c) : ''}</div>`;
+}
 function renderLoans() {
   const today = todayStr(), loans = conf().loans || [];
   if (!loans.length) { $('#loanCards').innerHTML = '<div class="card empty">Chưa có khoản vay. Nạp file dữ liệu ban đầu hoặc bấm “Thêm khoản vay”.</div>'; return; }
-  $('#loanCards').innerHTML = loans.map((l, i) => {
-    const c = loanCtx(l, i, today);
-    if (!c.s) return `<div class="loan"><div class="loan-h"><h3>${esc(l.ten)}</h3><button class="btn sm" data-edit="${i}">Sửa</button></div><p class="muted">Cấu hình lỗi: ${esc(c.err)}</p></div>`;
-    const k = c.s.ky_toi;
-    const seg = k ? `<div class="seg">Cách tính lãi kỳ tới:<br>${k.chi_tiet_lai.map(p => `${fmtD(p.tu)} → ${fmtD(p.den)}: ${p.so_ngay} ngày × ${fmt(p.du_no)} × ${p.lai_suat}% / 365 = <b>${fmt(p.lai)}</b>`).join('<br>')}</div>` : '';
-    return `<div class="loan"><div class="loan-h"><h3>${esc(l.ten)}</h3>${loanBadge(c)}</div>
-      ${loanKv(c, today)}${rateTableHtml(c)}${seg}
-      <div class="actions" style="margin-top:14px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch trả nợ' : 'Xem lịch trả nợ'}</button><button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa khoản vay</button></div>
-      ${openSched.has(l.id) ? scheduleHtml(c) : ''}</div>`;
-  }).join('');
+  const ctx = loans.map((l, i) => loanCtx(l, i, today));
+  const active = ctx.filter(c => !loanDone(c)), done = ctx.filter(loanDone);
+  let html = active.map(c => c.s ? loanCardHtml(c, loans, today)
+    : `<div class="loan"><div class="loan-h"><h3>${esc(c.l.ten)}</h3><button class="btn sm" data-edit="${c.i}">Sửa</button></div><p class="muted">Cấu hình lỗi: ${esc(c.err)}</p></div>`).join('');
+  if (done.length) html += `<button type="button" class="btn done-toggle" data-done>${showDone ? 'Ẩn' : 'Xem'} ${done.length} khoản vay đã tất toán / đã đảo nợ <svg class="ic"><use href="#i-down"/></svg></button>${showDone ? done.map(doneCardHtml).join('') : ''}`;
+  $('#loanCards').innerHTML = html;
   $('#loanCards').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.sched) { openSched.has(b.dataset.sched) ? openSched.delete(b.dataset.sched) : openSched.add(b.dataset.sched); renderLoans(); }
+    if (b.dataset.sched) { openSched.has(b.dataset.sched) ? openSched.delete(b.dataset.sched) : openSched.add(b.dataset.sched); renderLoans(); labelTables(); }
     if (b.dataset.edit) openLoanEditor(+b.dataset.edit);
+    if (b.hasAttribute('data-done')) { showDone = !showDone; renderLoans(); labelTables(); }
+    if (b.dataset.roll) { rollEdit = rollEdit === +b.dataset.roll ? null : +b.dataset.roll; renderLoans(); const f = document.getElementById('roll-' + rollEdit); if (f) f.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    if (b.hasAttribute('data-rl-cancel')) { rollEdit = null; renderLoans(); }
+    if (b.dataset.rlSave) applyRoll(+b.dataset.rlSave, b.closest('.roll'));
   };
 }
 
@@ -583,7 +647,10 @@ function openLoanEditor(idx) {
       ${f('goc_moi_ky', 'Gốc mỗi kỳ (đ)', 'text', l.goc_moi_ky ? fmt(l.goc_moi_ky) : '', 'inputmode="numeric"')}
       ${f('ky_dau', 'Tháng trả kỳ đầu', 'month', l.ky_dau)}
       ${f('nhac_truoc', 'Nhắc trước (ngày)', 'number', l.nhac_truoc)}
+      ${f('ngay_ket_thuc', 'Ngày đáo hạn cụ thể (nếu có)', 'date', l.ngay_ket_thuc)}
+      ${f('nhom', 'Nhóm (các khoản đảo nợ nối tiếp)', 'text', l.nhom, 'placeholder="VD: nha"')}
     </div>
+    <label class="chk"><input id="le-dao" type="checkbox" ${l.dao_no ? 'checked' : ''}> Gốc cuối kỳ trả bằng khoản vay mới (đảo nợ)</label>
     <label class="chk"><input id="le-lui" type="checkbox" ${l.lui_ngay_nghi !== false ? 'checked' : ''}> Rơi vào thứ 7, chủ nhật thì dời sang thứ 2</label>
     ${Object.keys(LIST_DEFS).map(listHtml).join('')}
     <div class="actions"><button class="primary" id="le-save">Lưu khoản vay</button><button id="le-cancel">Đóng</button>${idx == null ? '' : '<button class="danger" id="le-del">Xóa khoản vay</button>'}</div>`;
@@ -604,7 +671,8 @@ function openLoanEditor(idx) {
     const out = { ...l, ten: $('#le-ten').value.trim(), kieu: $('#le-kieu').value, so_tien_vay: num('so_tien_vay'),
       ngay_giai_ngan: $('#le-ngay_giai_ngan').value, so_thang: $('#le-so_thang').value ? +$('#le-so_thang').value : null,
       ngay_tra: +$('#le-ngay_tra').value || 15, goc_moi_ky: num('goc_moi_ky'), ky_dau: $('#le-ky_dau').value,
-      nhac_truoc: $('#le-nhac_truoc').value === '' ? 5 : +$('#le-nhac_truoc').value, lui_ngay_nghi: $('#le-lui').checked };
+      nhac_truoc: $('#le-nhac_truoc').value === '' ? 5 : +$('#le-nhac_truoc').value, lui_ngay_nghi: $('#le-lui').checked,
+      ngay_ket_thuc: $('#le-ngay_ket_thuc').value || undefined, nhom: $('#le-nhom').value.trim() || undefined, dao_no: $('#le-dao').checked || undefined };
     for (const key of Object.keys(LIST_DEFS)) {
       const rows = [...ed.querySelectorAll(`fieldset[data-list="${key}"] .lrow`)].map(row => {
         const o = {}; row.querySelectorAll('input').forEach(inp => { o[inp.dataset.k] = inp.value.trim(); }); return o;
@@ -630,14 +698,15 @@ function renderDebtSection(y, m) {
   let html = `<h2 class="sec-title">Nợ vay · ${esc(label)}</h2><div class="kpis">${kpi('Tổng dư nợ hiện tại', fmt(tot.duNo) + ' đ', '#fb923c', 'xe + nhà')}${kpi('Gốc phải trả', fmt(tot.goc) + ' đ', 'var(--ac)', 'đã trả + dự kiến')}${kpi('Lãi phải trả', fmt(tot.lai) + ' đ', 'var(--bad)', 'đã trả + dự kiến')}${kpi('Gốc + lãi', fmt(tot.goc + tot.lai) + ' đ', '#a78bfa', '')}</div>`;
   html += loans.map((l, i) => {
     const c = loanCtx(l, i, today);
+    if (c.s && !c.s.rows.some(r => r.thang.startsWith(y) && (!m || r.thang === m))) return '';
     if (!c.s) return `<div class="loan"><h3>${esc(l.ten)}</h3><p class="muted">Cấu hình lỗi: ${esc(c.err)}</p></div>`;
     const nextKy = c.s.ky_toi && c.s.ky_toi.ky;
     const rows = c.s.rows.filter(r => r.thang.startsWith(y) && (!m || r.thang === m));
-    const sg = rows.reduce((a, r) => ({ goc: a.goc + r.goc + r.tra_truoc, lai: a.lai + r.lai }), { goc: 0, lai: 0 });
+    const sg = rows.reduce((a, r) => ({ goc: a.goc + cg(r) + r.tra_truoc, lai: a.lai + r.lai }), { goc: 0, lai: 0 });
     const tbl = rows.length ? `<div class="tablewrap"><table class="tbl rsp"><tr><th>Kỳ</th><th>Ngày trả</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th>Trạng thái</th></tr>${
-      rows.map(r => `<tr class="${r.da_qua ? 'past' : r.ky === nextKy ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(r.goc + r.tra_truoc)}${r.tra_truoc ? `<br><small>gồm ${fmt(r.tra_truoc)} trả trước</small>` : ''}</td><td>${fmt(r.lai)}</td><td><b>${fmt(r.tong + r.tra_truoc)}</b></td><td>${r.da_qua ? 'Đã trả' : r.ky === nextKy ? 'Sắp tới' : 'Dự kiến'}</td></tr>`).join('')
+      rows.map(r => `<tr class="${r.da_qua ? 'past' : r.ky === nextKy ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(cg(r) + r.tra_truoc)}${r.tra_truoc ? `<br><small>gồm ${fmt(r.tra_truoc)} trả trước</small>` : ''}${r.dao_no ? `<br><small>${fmt(r.goc)} đảo nợ</small>` : ''}</td><td>${fmt(r.lai)}</td><td><b>${fmt(r.tong + r.tra_truoc)}</b></td><td>${r.dao_no ? 'Đáo hạn, đảo nợ' : r.da_qua ? 'Đã trả' : r.ky === nextKy ? 'Sắp tới' : 'Dự kiến'}</td></tr>`).join('')
     }<tr class="total"><td colspan="4">Cộng ${esc(label)}</td><td>${fmt(sg.goc)}</td><td>${fmt(sg.lai)}</td><td>${fmt(sg.goc + sg.lai)}</td><td></td></tr></table></div>` : '<p class="muted">Không có kỳ trả nợ nào trong khoảng thời gian này.</p>';
-    return `<div class="loan"><div class="loan-h"><h3>${esc(l.ten)}</h3>${loanBadge(c)}</div>${loanKv(c, today)}${rateTableHtml(c)}
+    return `<div class="loan"><div class="loan-h"><h3>${esc(l.ten)}</h3>${loanBadge(c)}</div>${chainInfo(c, loans, today)}${loanDone(c) ? '' : loanKv(c, today)}${rateTableHtml(c)}
       <div class="sect-h"><h4><svg class="ic"><use href="#i-cal"/></svg>Gốc &amp; lãi phải trả · ${esc(label)}</h4></div>${tbl}</div>`;
   }).join('');
   el.innerHTML = html;
@@ -700,7 +769,7 @@ function labelTables() {
 }
 function renderAll() {
   const active = document.querySelector('.tab.active').id;
-  if (document.activeElement && document.activeElement.matches && document.activeElement.matches('tr.edit input')) { $('#pendingCount').textContent = state.pending.length; return; }
+  if (document.activeElement && document.activeElement.matches && document.activeElement.matches('tr.edit input, .roll input')) { $('#pendingCount').textContent = state.pending.length; return; }
   if (active === 'tab-nhap') { renderToday(); renderAlerts(); }
   if (active === 'tab-vay') renderLoans();
   if (active === 'tab-cd') renderBudgetForm();
