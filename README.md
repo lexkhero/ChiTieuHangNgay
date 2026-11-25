@@ -1,3 +1,7 @@
+> **Bản 3.11** (xem số phiên bản ở cuối tab Cài đặt): giao diện viết lại đạt chuẩn tương phản, ô chọn có nút × bỏ chọn,
+> so sánh cùng kỳ trong Tổng hợp, thêm thành viên / hạng mục trong Cài đặt, đồng bộ nhẹ hơn (không tải lại toàn bộ sau mỗi lần lưu).
+> Cập nhật: chỉ cần đẩy code lên GitHub; không phải làm lại Apps Script.
+
 > **Cập nhật bản 3 (giao diện mới):** chỉ cần upload lại các file trong thư mục này lên GitHub (Commit changes), chờ 2 phút rồi mở trang bấm Ctrl + F5.
 > **Không cần** làm lại Apps Script, URL /exec, SECRET hay nạp lại dữ liệu. Dữ liệu và cấu hình khoản vay giữ nguyên.
 > Trên điện thoại: đóng hẳn app rồi mở lại 1-2 lần để nhận bản mới.
