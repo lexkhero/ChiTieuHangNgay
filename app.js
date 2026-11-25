@@ -429,6 +429,16 @@ function renderAlerts() {
 }
 const fmtD = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '';
 
+/* ---------- popup dùng chung ---------- */
+function openModal(title, html) {
+  $('#modalTitle').textContent = title; $('#modalBody').innerHTML = html;
+  $('#modal').hidden = false; document.body.classList.add('combo-lock');
+  const f = $('#modalBody').querySelector('input:not([type=checkbox]), select');
+  if (f && !matchMedia('(pointer: coarse)').matches) f.focus({ preventScroll: true });
+  return $('#modalBody');
+}
+function closeModal() { $('#modal').hidden = true; $('#modalBody').innerHTML = ''; $('#modalBody').onclick = null; document.body.classList.remove('combo-lock'); }
+
 /* ---------- khoản vay ---------- */
 const openSched = new Set();
 /** đang sửa mốc lãi suất: { loan: chỉ số khoản vay, idx: số thứ tự mốc | 'new', date?: 'YYYY-MM-DD' } */
@@ -531,7 +541,7 @@ function scheduleHtml(c) {
   }</table></div>`;
 }
 
-let rollEdit = null, showDone = false;
+let rollEdit = null, showDone = false, openLoan = null;
 const loanDone = c => c.s && !c.s.ky_toi && c.s.rows.length > 0;
 const baseName = t => String(t || '').replace(/\s*\(.*\)\s*$/, '');
 /** dòng mô tả chuỗi khoản vay nối tiếp (đảo nợ) */
@@ -544,8 +554,7 @@ function chainInfo(c, loans, today) {
 }
 function rollFormHtml(c) {
   const { l, i, s } = c, cur = currentRate(l, todayStr());
-  return `<div class="roll card" id="roll-${i}"><h4>Đáo hạn &amp; vay khoản mới (đảo nợ)</h4>
-    <p class="muted">Ngân hàng giải ngân khoản mới để trả gốc khoản cũ. Khoảng ngày chồng nhau (khoản mới giải ngân trước ngày khoản cũ đáo hạn) sẽ tính lãi cả hai khoản, giống trên sheet.</p>
+  return `<div class="roll" id="roll-${i}"><p class="muted">Ngân hàng giải ngân khoản mới để trả gốc khoản cũ. Khoảng ngày chồng nhau (khoản mới giải ngân trước ngày khoản cũ đáo hạn) sẽ tính lãi cả hai khoản, giống trên sheet.</p>
     <div class="grid2 f">
       <label>Ngày đáo hạn khoản cũ<input type="date" data-rl="end" value="${esc(l.ngay_ket_thuc || '')}"></label>
       <label>Ngày giải ngân khoản mới<input type="date" data-rl="start"></label>
@@ -554,7 +563,7 @@ function rollFormHtml(c) {
       <label>Ngày trả hằng tháng<input type="number" min="1" max="31" data-rl="day" value="${esc(l.ngay_tra || 15)}"></label>
       <label>Tháng trả kỳ đầu (để trống = tháng sau ngày giải ngân)<input type="month" data-rl="ky"></label>
     </div>
-    <div class="actions"><button type="button" class="btn sm primary" data-rl-save="${i}"><svg class="ic"><use href="#i-check"/></svg>Lưu</button><button type="button" class="btn sm" data-rl-cancel>Hủy</button></div></div>`;
+    <div class="actions modal-act"><button type="button" class="btn primary" data-rl-save="${i}"><svg class="ic"><use href="#i-check"/></svg>Lưu</button><button type="button" class="btn" data-rl-cancel>Hủy</button></div></div>`;
 }
 function applyRoll(i, box) {
   const v = k => box.querySelector(`[data-rl=${k}]`).value.trim();
@@ -571,18 +580,22 @@ function applyRoll(i, box) {
     ngay_tra: day, goc_moi_ky: old.kieu === 'tra_gop' ? old.goc_moi_ky : 0, ky_dau: ky, lui_ngay_nghi: old.lui_ngay_nghi, nhac_truoc: old.nhac_truoc,
     lai_suat: [{ tu_ngay: start, nam: rate }], tra_truoc: [], tam_dung_goc: [], doi_ngay: {} });
   try { loans.forEach(l => LoanEngine.schedule(l, todayStr())); } catch (e) { toast('Cấu hình chưa hợp lệ: ' + e.message, 'err'); return; }
-  rollEdit = null; setConf('loans', loans);
+  rollEdit = null; closeModal(); setConf('loans', loans);
   toast('Đã ghi đáo hạn khoản cũ ngày ' + fmtD(end) + ' và khoản vay mới từ ' + fmtD(start), 'ok');
 }
 function loanCardHtml(c, loans, today) {
   const { l, i, s } = c, k = s.ky_toi;
   const seg = k ? `<div class="seg">Cách tính lãi kỳ tới:<br>${k.chi_tiet_lai.map(p => `${fmtD(p.tu)} → ${fmtD(p.den)}: ${p.so_ngay} ngày × ${fmt(p.du_no)} × ${p.lai_suat}% / 365 = <b>${fmt(p.lai)}</b>`).join('<br>')}</div>` : '';
-  return `<div class="loan"><div class="loan-h"><h3>${esc(l.ten)}</h3>${loanBadge(c)}</div>${chainInfo(c, loans, today)}
+  const open = openLoan === l.id;
+  return `<div class="loan acc${open ? ' open' : ''}"><button type="button" class="acc-h" data-acc="${esc(l.id)}" aria-expanded="${open}">
+      <span class="acc-t"><b>${esc(l.ten)}</b><small>${k ? `Kỳ tới ${fmtD(k.ngay)}: <b>${fmt(k.tong)} đ</b> · dư nợ ${compact(s.du_no_hien_tai)}` : 'Đã tất toán'}</small></span>
+      ${loanBadge(c)}<svg class="ic chev"><use href="#i-down"/></svg></button>
+    <div class="acc-b">${chainInfo(c, loans, today)}
     ${loanKv(c, today)}${rateTableHtml(c)}${seg}
     <div class="actions" style="margin-top:14px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch' : 'Lịch trả nợ'}</button>
       <button type="button" class="btn sm" data-roll="${i}" title="Đáo hạn khoản cũ &amp; vay khoản mới"><svg class="ic"><use href="#i-sync"/></svg>Đảo nợ</button>
       <button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa</button></div>
-    ${rollEdit === i ? rollFormHtml(c) : ''}${openSched.has(l.id) ? scheduleHtml(c) : ''}</div>`;
+    ${openSched.has(l.id) ? scheduleHtml(c) : ''}</div></div>`;
 }
 function doneCardHtml(c) {
   const { l, i, s } = c, last = s.rows[s.rows.length - 1];
@@ -599,6 +612,10 @@ function renderLoans() {
   if (!loans.length) { $('#loanCards').innerHTML = '<div class="card empty">Chưa có khoản vay. Nạp file dữ liệu ban đầu hoặc bấm “Thêm khoản vay”.</div>'; return; }
   const ctx = loans.map((l, i) => loanCtx(l, i, today));
   const active = ctx.filter(c => !loanDone(c)), done = ctx.filter(loanDone);
+  if (openLoan === null) { // lần đầu: mở khoản sắp đến hạn nhất
+    const nx = active.filter(c => c.s && c.s.ky_toi).sort((a, b) => a.s.ky_toi.ngay.localeCompare(b.s.ky_toi.ngay))[0];
+    openLoan = nx ? nx.l.id : '';
+  }
   let html = active.map(c => c.s ? loanCardHtml(c, loans, today)
     : `<div class="loan"><div class="loan-h"><h3>${esc(c.l.ten)}</h3><button class="btn sm" data-edit="${c.i}">Sửa</button></div><p class="muted">Cấu hình lỗi: ${esc(c.err)}</p></div>`).join('');
   if (done.length) html += `<button type="button" class="btn done-toggle" data-done>${showDone ? 'Ẩn' : 'Xem'} ${done.length} khoản vay đã tất toán / đã đảo nợ <svg class="ic"><use href="#i-down"/></svg></button>${showDone ? done.map(doneCardHtml).join('') : ''}`;
@@ -608,9 +625,8 @@ function renderLoans() {
     if (b.dataset.sched) { openSched.has(b.dataset.sched) ? openSched.delete(b.dataset.sched) : openSched.add(b.dataset.sched); renderLoans(); labelTables(); }
     if (b.dataset.edit) openLoanEditor(+b.dataset.edit);
     if (b.hasAttribute('data-done')) { showDone = !showDone; renderLoans(); labelTables(); }
-    if (b.dataset.roll) { rollEdit = rollEdit === +b.dataset.roll ? null : +b.dataset.roll; renderLoans(); const f = document.getElementById('roll-' + rollEdit); if (f) f.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
-    if (b.hasAttribute('data-rl-cancel')) { rollEdit = null; renderLoans(); }
-    if (b.dataset.rlSave) applyRoll(+b.dataset.rlSave, b.closest('.roll'));
+    if (b.dataset.roll) { const i = +b.dataset.roll, c = loanCtx(loans[i], i, today); openModal('Đáo hạn & vay khoản mới (đảo nợ)', rollFormHtml(c)); }
+    if (b.dataset.acc) { openLoan = openLoan === b.dataset.acc ? '' : b.dataset.acc; renderLoans(); }
   };
 }
 
@@ -621,27 +637,33 @@ function applyLoanEdit(i, mutate, okMsg) {
   mutate(loans[i]);
   let after;
   try { after = LoanEngine.schedule(loans[i], today); } catch (err) { toast('Cấu hình chưa hợp lệ: ' + err.message, 'err'); return false; }
-  rateEdit = null; setConf('loans', loans);
+  rateEdit = null; closeModal(); setConf('loans', loans);
   const nk = after.ky_toi;
   const dl = before ? after.lai_con_lai - before.lai_con_lai : 0;
   toast(okMsg + ' Lãi còn lại ' + (dl >= 0 ? '+' : '') + fmt(dl) + ' đ' + (nk ? '. Kỳ tới ' + fmtD(nk.ngay) + ': ' + fmt(nk.tong) + ' đ' : ''), 'ok');
   return true;
 }
+function openRateModal(i, idx, date) {
+  const l = (conf().loans || [])[i], today = todayStr(), r = idx === 'new' ? null : l.lai_suat[idx], cur = currentRate(l, today);
+  openModal(idx === 'new' ? 'Thêm mốc đổi lãi suất' : 'Sửa mốc lãi suất', `<p class="muted">${esc(l.ten)}</p>
+    <div class="row"><label>Áp dụng từ ngày<input type="date" data-rf="date" value="${esc(r ? r.tu_ngay : date || today)}"></label>
+    <label>Lãi suất (%/năm)<input type="number" step="0.01" min="0" inputmode="decimal" data-rf="rate" value="${esc(r ? r.nam : cur ? cur.nam : '')}"></label></div>
+    <p class="muted">Tiền lãi các kỳ sau ngày này, lịch trả nợ và số liệu tổng hợp sẽ tự tính lại.</p>
+    <div class="actions modal-act"><button type="button" class="btn primary" data-rt="save" data-loan="${i}" data-idx="${idx}"><svg class="ic"><use href="#i-check"/></svg>Lưu</button><button type="button" class="btn" data-rt="cancel">Hủy</button></div>`);
+}
 function onRateClick(e) {
   const b = e.target.closest('[data-rt]'); if (!b) return;
   const op = b.dataset.rt, i = +b.dataset.loan, idx = b.dataset.idx === 'new' ? 'new' : +b.dataset.idx;
   const rerender = () => { renderAll(); const t = document.getElementById('rate-' + i); if (t) t.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
-  if (op === 'add') { rateEdit = { loan: i, idx: 'new' }; rerender(); }
-  else if (op === 'from') { rateEdit = { loan: i, idx: 'new', date: b.dataset.date }; rerender(); }
-  else if (op === 'edit') { rateEdit = { loan: i, idx }; renderAll(); }
-  else if (op === 'cancel') { rateEdit = null; renderAll(); }
+  if (op === 'add' || op === 'from' || op === 'edit') { openRateModal(i, op === 'edit' ? idx : 'new', op === 'from' ? b.dataset.date : null); return; }
+  if (op === 'cancel') { closeModal(); return; }
   else if (op === 'del') {
     const l = (conf().loans || [])[i];
     if ((l.lai_suat || []).length <= 1) { toast('Phải còn ít nhất một mức lãi suất', 'err'); return; }
     const r = l.lai_suat[idx];
     if (confirm('Xóa mốc lãi suất ' + r.nam + '%/năm từ ngày ' + fmtD(r.tu_ngay) + '?\nCác kỳ sau sẽ tính theo mức lãi của mốc trước đó.')) applyLoanEdit(i, x => x.lai_suat.splice(idx, 1), 'Đã xóa mốc lãi suất.');
   } else if (op === 'save') {
-    const tr = b.closest('tr'), date = tr.querySelector('[data-rf=date]').value, nam = parseFloat(String(tr.querySelector('[data-rf=rate]').value).replace(',', '.'));
+    const tr = b.closest('.modal-b'), date = tr.querySelector('[data-rf=date]').value, nam = parseFloat(String(tr.querySelector('[data-rf=rate]').value).replace(',', '.'));
     if (!date || isNaN(nam) || nam < 0 || nam > 100) { toast('Cần nhập ngày áp dụng và lãi suất (%/năm) hợp lệ', 'err'); return; }
     const l = (conf().loans || [])[i];
     if ((l.lai_suat || []).some((r, k) => r.tu_ngay === date && k !== idx)) { toast('Đã có mốc lãi suất vào ngày ' + fmtD(date) + ', hãy sửa dòng đó', 'err'); return; }
@@ -664,12 +686,11 @@ function openLoanEditor(idx) {
   const listHtml = key => {
     const def = LIST_DEFS[key], rows = lists[key] || [];
     return `<fieldset data-list="${key}"><legend>${def.title}</legend>${rows.map(r => rowHtml(def, r)).join('')}
-      <div class="actions"><button type="button" data-addrow="${key}">＋ Thêm dòng</button></div></fieldset>`;
+      <div class="actions"><button type="button" class="btn sm" data-addrow="${key}">＋ Thêm dòng</button></div></fieldset>`;
   };
   const rowHtml = (def, r) => `<div class="lrow${def.fields.length === 3 ? ' three' : ''}">${def.fields.map(([k, t, ph]) =>
     `<input data-k="${k}" type="${t}" placeholder="${ph}" title="${ph}" value="${esc(k === 'so_tien' && r[k] ? fmt(r[k]) : r[k] ?? '')}" ${t === 'number' ? 'step="0.01"' : ''} ${k === 'so_tien' ? 'inputmode="numeric"' : ''}>`).join('')}<button type="button" data-delrow>✕</button></div>`;
-  const ed = $('#loanEditor');
-  ed.innerHTML = `<h3>${idx == null ? 'Thêm khoản vay' : 'Sửa: ' + esc(l.ten)}</h3>
+  const ed = openModal(idx == null ? 'Thêm khoản vay' : 'Sửa: ' + l.ten, `
     ${f('ten', 'Tên khoản vay', 'text', l.ten, 'placeholder="VD: Vay mua ô tô"')}
     <div class="grid2">
       <label>Cách trả<select id="le-kieu"><option value="tra_gop">Trả góp gốc đều hằng tháng</option><option value="tra_lai">Hằng tháng trả lãi, gốc trả cuối kỳ</option></select></label>
@@ -686,18 +707,17 @@ function openLoanEditor(idx) {
     <label class="chk"><input id="le-dao" type="checkbox" ${l.dao_no ? 'checked' : ''}> Gốc cuối kỳ trả bằng khoản vay mới (đảo nợ)</label>
     <label class="chk"><input id="le-lui" type="checkbox" ${l.lui_ngay_nghi !== false ? 'checked' : ''}> Rơi vào thứ 7, chủ nhật thì dời sang thứ 2</label>
     ${Object.keys(LIST_DEFS).map(listHtml).join('')}
-    <div class="actions"><button class="primary" id="le-save">Lưu khoản vay</button><button id="le-cancel">Đóng</button>${idx == null ? '' : '<button class="danger" id="le-del">Xóa khoản vay</button>'}</div>`;
+    <div class="actions modal-act"><button type="button" class="btn primary" id="le-save">Lưu khoản vay</button><button type="button" class="btn" id="le-cancel">Đóng</button>${idx == null ? '' : '<button type="button" class="btn danger" id="le-del">Xóa</button>'}</div>`);
   $('#le-kieu').value = l.kieu || 'tra_gop';
-  ed.hidden = false; ed.scrollIntoView({ behavior: 'smooth' });
   ed.onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.addrow) { const key = b.dataset.addrow; b.closest('.actions').insertAdjacentHTML('beforebegin', rowHtml(LIST_DEFS[key], {})); }
     if (b.hasAttribute('data-delrow')) b.closest('.lrow').remove();
   };
-  $('#le-cancel').onclick = () => { ed.hidden = true; };
+  $('#le-cancel').onclick = closeModal;
   if ($('#le-del')) $('#le-del').onclick = () => {
     if (!confirm('Xóa khoản vay "' + l.ten + '"? Không ảnh hưởng dữ liệu chi tiêu.')) return;
-    const next = loans.slice(); next.splice(idx, 1); setConf('loans', next); ed.hidden = true;
+    const next = loans.slice(); next.splice(idx, 1); closeModal(); setConf('loans', next);
   };
   $('#le-save').onclick = () => {
     const num = id => parseInt(String($('#le-' + id).value).replace(/[^\d]/g, ''), 10) || 0;
@@ -719,7 +739,7 @@ function openLoanEditor(idx) {
     if (out.kieu === 'tra_gop' && !out.goc_moi_ky) { toast('Trả góp cần nhập gốc mỗi kỳ', 'err'); return; }
     try { LoanEngine.schedule(out, todayStr()); } catch (e) { toast('Cấu hình chưa hợp lệ: ' + e.message, 'err'); return; }
     const next = loans.slice(); if (idx == null) next.push(out); else next[idx] = out;
-    setConf('loans', next); ed.hidden = true; toast('Đã lưu khoản vay', 'ok');
+    closeModal(); setConf('loans', next); toast('Đã lưu khoản vay', 'ok');
   };
 }
 
@@ -780,7 +800,7 @@ function labelTables() {
 }
 function renderAll() {
   const active = document.querySelector('.tab.active').id;
-  if (document.activeElement && document.activeElement.matches && document.activeElement.matches('tr.edit input, .roll input')) { $('#pendingCount').textContent = state.pending.length; return; }
+  if (document.activeElement && document.activeElement.matches && document.activeElement.matches('tr.edit input, .roll input, .modal input')) { $('#pendingCount').textContent = state.pending.length; return; }
   if (active === 'tab-nhap') { renderToday(); renderAlerts(); }
   if (active === 'tab-vay') renderLoans();
   if (active === 'tab-cd') renderBudgetForm();
@@ -870,6 +890,16 @@ function init() {
   $('#ds-view').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { dsView = b.dataset.view; save('cthn.dsview', dsView); renderList(); } });
   $('#dsList').addEventListener('click', e => { const b = e.target.closest('.more'); if (b) { const k = b.dataset.more; dsLimit[k] = (dsLimit[k] || (k === 'ngay' ? 300 : 80)) + 200; renderList(); } });
   document.addEventListener('click', onRateClick);
+  $('#modalX').onclick = closeModal;
+  $('#modal').addEventListener('click', e => {
+    if (e.target === $('#modal')) return closeModal();
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.hasAttribute('data-rl-cancel')) closeModal();
+    if (b.dataset.rlSave) applyRoll(+b.dataset.rlSave, $('#modalBody'));
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal').hidden) closeModal(); });
+  // gắn nhãn cột cho bảng mỗi khi nội dung thay đổi (bảng xếp dọc trên điện thoại)
+  new MutationObserver(() => labelTables()).observe(document.querySelector('main'), { childList: true, subtree: true });
   $('#themeBtn').onclick = toggleTheme;
   $('#ds-tim').addEventListener('input', renderList);
   ['#th-nam', '#th-thang', '#th-nguoi'].forEach(s => $(s).addEventListener('change', renderSummary));

@@ -147,7 +147,6 @@
         <section id="tab-vay" class="tab">
           <div id="loanCards"></div>
           <div class="actions pad"><button class="btn" id="loanAdd"><svg class="ic"><use href="#i-plus"/></svg>Thêm khoản vay</button></div>
-          <div id="loanEditor" class="editor card" hidden></div>
         </section>
 
         <!-- CÀI ĐẶT -->
@@ -190,6 +189,13 @@
           </div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-h"><h3 id="modalTitle"></h3><button type="button" class="combo-x" id="modalX" aria-label="Đóng"><svg class="ic"><use href="#i-x"/></svg></button></div>
+      <div id="modalBody" class="modal-b"></div>
     </div>
   </div>
 
