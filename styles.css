@@ -66,8 +66,46 @@ button.danger { color: var(--danger); border-color: var(--danger); }
 .bar small { color: var(--muted); }
 .progress { height: 8px; background: var(--line); border-radius: 4px; margin-top: 8px; overflow: hidden; }
 .progress div { height: 100%; width: 0; background: var(--ok); transition: width .2s; }
-.tabbar { position: fixed; bottom: 0; left: 0; right: 0; display: grid; grid-template-columns: repeat(4, 1fr);
+.tabbar { position: fixed; bottom: 0; left: 0; right: 0; display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
 .tabbar button { border: 0; border-radius: 0; background: transparent; font-size: 20px; padding: 6px 0 8px; color: var(--muted); }
 .tabbar button span { display: block; font-size: 11px; }
 .tabbar button.active { color: var(--primary); }
+
+.filters.one { grid-template-columns: 1fr; }
+.alert { border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 14px; background: #fff4e5; color: #7a4b00; border: 1px solid #f5d19b; }
+.alert.red { background: #fdecea; color: #8c1d18; border-color: #f2b8b5; }
+.alert.blue { background: #e8f0fe; color: #1a3d6b; border-color: #c4d7f5; }
+.alert b { color: inherit; }
+.bar .fill.warn { background: #e0a100; } .bar .fill.over { background: var(--danger); }
+.tablewrap { overflow-x: auto; background: var(--card); border-radius: var(--radius); }
+.tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
+.tbl th, .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.tbl th { background: var(--bg); font-weight: 600; position: sticky; top: 0; }
+.tbl tr.past td { color: var(--muted); } .tbl tr.next td { background: #fff4e5; font-weight: 600; }
+.tbl td.up { color: var(--danger); } .tbl td.down { color: var(--ok); } .tbl tr.total td { font-weight: 700; }
+.loan { background: var(--card); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; }
+.loan h3 { margin: 0 0 8px; font-size: 16px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.badge { font-size: 12px; padding: 3px 8px; border-radius: 10px; background: var(--bg); color: var(--muted); white-space: nowrap; }
+.badge.warn { background: #fff4e5; color: #7a4b00; } .badge.red { background: #fdecea; color: var(--danger); }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 14px; }
+.kv div span { display: block; font-size: 12px; color: var(--muted); } .kv div b { font-size: 15px; }
+.kv .big b { font-size: 18px; color: var(--primary); }
+.seg { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.loan .sched { margin-top: 10px; max-height: 420px; overflow: auto; }
+.editor { background: var(--card); border-radius: var(--radius); padding: 12px; margin-top: 12px; }
+.editor h3 { margin: 0 0 6px; font-size: 16px; }
+.editor .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.editor .grid2 label { margin-top: 6px; }
+.editor fieldset { border: 1px solid var(--line); border-radius: 10px; margin: 12px 0 0; padding: 8px 10px; }
+.editor legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
+.editor .lrow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: end; margin-top: 6px; }
+.editor .lrow.three { grid-template-columns: 1fr 1fr 1fr auto; }
+.editor .lrow input { margin-top: 0; font-size: 14px; padding: 8px; }
+.editor .lrow button { padding: 8px 10px; }
+.editor .chk { display: flex; gap: 8px; align-items: center; } .editor .chk input { width: auto; margin: 0; }
+.budget { display: grid; grid-template-columns: 1fr 130px; gap: 6px 8px; align-items: center; font-size: 14px; }
+.budget input { margin: 0; padding: 8px; text-align: right; font-size: 14px; }
+.editor .chk input[type=checkbox] { -webkit-appearance: checkbox; appearance: auto; width: 18px; height: 18px; }
+.loan .tbl { font-size: 12px; } .loan .tbl th, .loan .tbl td { padding: 5px 6px; }

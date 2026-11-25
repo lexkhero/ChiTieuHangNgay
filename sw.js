@@ -1,6 +1,6 @@
 // Cache giao diện để mở được khi mất mạng. Dữ liệu (Apps Script) luôn lấy qua mạng.
-const CACHE = 'cthn-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'classifier.js', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'cthn-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'classifier.js', 'loan-engine.js', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))));

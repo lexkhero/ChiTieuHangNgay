@@ -23,6 +23,7 @@
   <main>
     <!-- NHẬP -->
     <section id="tab-nhap" class="tab active">
+      <div id="alerts"></div>
       <form id="form" autocomplete="off">
         <input type="hidden" id="f-id">
         <div class="row">
@@ -86,6 +87,7 @@
         <div class="card"><span id="th-bq-lbl">Bình quân</span><b id="th-bq"></b></div>
         <div class="card"><span>Số khoản</span><b id="th-dem"></b></div>
       </div>
+      <div class="cards" id="th-no"></div>
       <h2>Theo hạng mục</h2>
       <div id="th-hangmuc" class="bars"></div>
       <h2>Theo người</h2>
@@ -94,6 +96,17 @@
       <div id="th-thang-bars" class="bars"></div>
       <h2>Khoản chi lớn nhất</h2>
       <ul id="th-top" class="list"></ul>
+      <h2>So sánh các năm</h2>
+      <div class="filters one"><select id="cmp-hm"><option value="">Tất cả hạng mục</option></select></div>
+      <p class="muted">Theo bộ lọc "người" ở trên. Ô tô màu: cao hơn cùng kỳ năm trước.</p>
+      <div class="tablewrap"><table id="cmp-table" class="tbl"></table></div>
+    </section>
+
+    <!-- KHOẢN VAY -->
+    <section id="tab-vay" class="tab">
+      <div id="loanCards"></div>
+      <div class="actions"><button id="loanAdd">＋ Thêm khoản vay</button></div>
+      <div id="loanEditor" class="editor" hidden></div>
     </section>
 
     <!-- CÀI ĐẶT -->
@@ -111,9 +124,18 @@
       <p class="muted" id="cfg-info"></p>
 
       <h2>Nạp dữ liệu ban đầu</h2>
-      <p class="muted">Chọn file <b>seed-2026.json</b> (không đưa file này lên GitHub). Nạp lại nhiều lần cũng không bị trùng.</p>
+      <p class="muted">Chọn file <b>seed-2024-2026.json</b> (không đưa file này lên GitHub). Nạp lại nhiều lần cũng không bị trùng.</p>
       <input type="file" id="seedFile" accept=".json,application/json">
       <div class="progress" id="seedProg" hidden><div></div></div>
+
+      <h2>Ngân sách tháng theo hạng mục</h2>
+      <p class="muted">Để trống nếu không đặt. Khi chi tới 90% sẽ có cảnh báo trên trang và qua Telegram.</p>
+      <div id="budgetForm" class="budget"></div>
+      <div class="actions"><button class="primary" id="budgetSave">Lưu ngân sách</button></div>
+
+      <h2>Telegram</h2>
+      <p class="muted">Nhắc đến hạn trả nợ lúc 7 giờ sáng, cảnh báo ngân sách, tổng kết tháng vào ngày 1. Cài token và chat id trong Apps Script (xem README).</p>
+      <div class="actions"><button id="tgTest">Gửi tin nhắn thử</button></div>
 
       <h2>Khác</h2>
       <div class="actions">
@@ -128,10 +150,12 @@
     <button data-tab="tab-nhap" class="active">＋<span>Nhập</span></button>
     <button data-tab="tab-ds">☰<span>Danh sách</span></button>
     <button data-tab="tab-th">▤<span>Tổng hợp</span></button>
+    <button data-tab="tab-vay">🏦<span>Khoản vay</span></button>
     <button data-tab="tab-cd">⚙<span>Cài đặt</span></button>
   </nav>
 
   <script src="classifier.js"></script>
+  <script src="loan-engine.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
