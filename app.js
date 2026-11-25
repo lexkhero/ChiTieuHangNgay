@@ -743,6 +743,125 @@ function openLoanEditor(idx) {
   };
 }
 
+/* ---------- Tổng hợp › Nợ vay ---------- */
+let thView = load('cthn.thview', 'ct'), debtYear = null;
+const GCOL = ['#fb923c', '#22d3ee', '#f472b6', '#84cc16'];
+/** Gom các khoản vay theo nhóm (khoản đảo nợ nối tiếp tính chung) và tính số liệu tổng/đã trả/còn lại */
+function debtModel() {
+  const today = todayStr(), loans = conf().loans || [], map = new Map();
+  loans.forEach((l, i) => {
+    const c = loanCtx(l, i, today); if (!c.s) return;
+    const key = l.nhom || l.id, name = baseName(l.ten);
+    if (!map.has(key)) map.set(key, { key, name, short: /ô tô|oto|\bxe\b/i.test(name) ? 'Ô tô' : /nhà/i.test(name) ? 'Nhà' : name, ctx: [], rows: [] });
+    const g = map.get(key); g.ctx.push(c);
+    c.s.rows.forEach(r => g.rows.push({ ...r, loan: l, cash: cg(r) + r.tra_truoc }));
+  });
+  const gs = [...map.values()];
+  gs.forEach((g, j) => {
+    g.color = GCOL[j % GCOL.length];
+    g.rows.sort((a, b) => a.ngay.localeCompare(b.ngay));
+    const paid = g.rows.filter(r => r.da_qua), fut = g.rows.filter(r => !r.da_qua);
+    const act = g.ctx.filter(c => c.s.ky_toi);
+    g.paidG = paid.reduce((a, r) => a + r.cash, 0); g.paidL = paid.reduce((a, r) => a + r.lai, 0);
+    g.duNo = act.reduce((a, c) => a + c.s.du_no_hien_tai, 0);
+    g.remG = g.duNo; g.remL = fut.reduce((a, r) => a + r.lai, 0);
+    g.totG = g.paidG + g.remG; g.totL = g.paidL + g.remL;
+    g.accrued = act.reduce((a, c) => a + c.s.lai_tam_tinh, 0);
+    g.next = act.map(c => ({ ...c.s.ky_toi, loan: c.l, con_ngay: c.s.con_ngay })).sort((a, b) => a.ngay.localeCompare(b.ngay))[0] || null;
+    g.openEnded = act.some(c => !c.s.dao_han);
+    g.lastDate = g.rows.length ? g.rows[g.rows.length - 1].ngay : null;
+    g.daoHan = act.map(c => c.s.dao_han).filter(Boolean).sort().pop() || null;
+    g.loanOrig = g.ctx[0] ? g.ctx[0].l.so_tien_vay : 0;
+  });
+  return gs;
+}
+/** Các mốc sắp tới: đổi lãi suất, hết tạm dừng trả gốc, đáo hạn */
+function debtMilestones(gs) {
+  const today = todayStr(), out = [];
+  gs.forEach(g => g.ctx.filter(c => c.s.ky_toi).forEach(c => {
+    const l = c.l;
+    (l.lai_suat || []).filter(r => r.tu_ngay > today).forEach(r => out.push({ d: r.tu_ngay, g, t: `Đổi lãi suất sang <b>${r.nam}%/năm</b>` }));
+    (l.tam_dung_goc || []).forEach(t => {
+      const r = c.s.rows.find(x => x.thang > t.den_ky && x.goc > 0);
+      if (r && !r.da_qua) out.push({ d: r.ngay, g, t: `Hết tạm dừng, trả gốc trở lại <b>${fmt(r.goc)} đ</b>/kỳ (kỳ này tổng <b>${fmt(r.tong)} đ</b>)` });
+    });
+    if (c.s.dao_han && c.s.dao_han > today) {
+      const last = c.s.rows[c.s.rows.length - 1];
+      out.push({ d: c.s.dao_han, g, t: l.dao_no ? `Đáo hạn, đảo nợ ${fmt(last.goc)} đ sang khoản vay mới` : `Đáo hạn, tất toán. Kỳ cuối trả <b>${fmt(last.tong)} đ</b>` });
+    }
+  }));
+  return out.sort((a, b) => a.d.localeCompare(b.d));
+}
+const daysTo = d => Math.round((new Date(d + 'T00:00') - new Date(todayStr() + 'T00:00')) / 864e5);
+function renderDebtView() {
+  const el = $('#th-no'), gs = debtModel();
+  if (!gs.length) { el.innerHTML = '<div class="card empty">Chưa có khoản vay. Vào tab Khoản vay để thêm.</div>'; return; }
+  const today = todayStr(), sum = k => gs.reduce((a, g) => a + g[k], 0);
+  const T = { paidG: sum('paidG'), paidL: sum('paidL'), remG: sum('remG'), remL: sum('remL'), totG: sum('totG'), totL: sum('totL'), duNo: sum('duNo') };
+  const open = gs.some(g => g.openEnded);
+  const cell = (g, l, cls = '') => `<div class="dv ${cls}"><span>Gốc</span><b>${fmt(g)}</b><span>Lãi</span><b>${fmt(l)}</b><span class="tt">Cộng</span><b class="tt">${fmt(g + l)}</b></div>`;
+  const pct = (a, b) => (b ? Math.round(a / b * 100) : 0);
+
+  // 1) Kỳ trả sắp tới
+  let html = `<h2 class="sec-title">Kỳ trả sắp tới</h2><div class="next-grid">${gs.filter(g => g.next).map(g => {
+    const n = g.next, cls = n.con_ngay <= 1 ? 'red' : n.con_ngay <= 5 ? 'warn' : '';
+    return `<div class="next-card" style="--gc:${g.color}"><div class="nc-h"><b>${esc(g.short)}</b><span class="badge ${cls}">${n.con_ngay === 0 ? 'Hôm nay' : 'Còn ' + n.con_ngay + ' ngày'}</span></div>
+      <div class="nc-d">${fmtD(n.ngay)}</div><div class="nc-v">${fmt(n.tong)} đ</div>
+      <div class="nc-s">gốc ${fmt(n.goc)} · lãi ${fmt(n.lai)}${n.chi_tiet_lai.length > 1 ? `<br>${n.chi_tiet_lai.map(p => `${p.lai_suat}%: ${fmt(p.lai)}`).join(' + ')}` : ''}</div></div>`;
+  }).join('')}<div class="next-card total"><div class="nc-h"><b>Tổng kỳ tới</b></div><div class="nc-d">&nbsp;</div><div class="nc-v">${fmt(gs.reduce((a, g) => a + (g.next ? g.next.tong : 0), 0))} đ</div><div class="nc-s">Lãi đang tính đến hôm nay: ${fmt(sum('accrued'))} đ</div></div></div>`;
+
+  // 2) Tổng quan nợ: tổng / đã trả / còn lại, tách ô tô - nhà, gốc - lãi
+  const card = (title, color, d, extra) => `<div class="debt-card" style="--gc:${color}">
+      <div class="dc-h"><h3>${esc(title)}</h3><span class="dc-du">Dư nợ hiện tại <b>${fmt(d.duNo)} đ</b></span></div>
+      <div class="dc-bar"><i style="width:${pct(d.paidG, d.totG)}%"></i></div><div class="muted dc-p">Đã trả ${pct(d.paidG, d.totG)}% gốc (${fmt(d.paidG)} / ${fmt(d.totG)})</div>
+      <div class="dc-grid"><div class="dc-col"><h4>Tổng phải trả</h4>${cell(d.totG, d.totL)}</div>
+        <div class="dc-col ok"><h4>Đã trả đến ${fmtD(today)}</h4>${cell(d.paidG, d.paidL)}</div>
+        <div class="dc-col rem"><h4>Còn phải trả</h4>${cell(d.remG, d.remL)}</div></div>${extra || ''}</div>`;
+  html += `<h2 class="sec-title">Tổng quan nợ</h2>` + gs.map(g => card(g.name, g.color, g,
+    `<p class="muted dc-note">${g.daoHan && !g.openEnded ? 'Đáo hạn ' + fmtD(g.daoHan) + '. ' : ''}${g.openEnded ? `Khoản vay đang dùng chưa có ngày đáo hạn: lãi còn phải trả tạm tính đến ${fmtD(g.lastDate)} (24 tháng tới), gốc ${fmt(g.remG)} trả khi đáo hạn hoặc đảo nợ. ` : ''}${g.ctx.length > 1 ? `Gồm ${g.ctx.length} khoản vay nối tiếp (đảo nợ), gốc đảo nợ không tính là tiền bỏ ra.` : ''}</p>`)).join('')
+    + card('Tổng ô tô + nhà', 'var(--ac)', T, open ? '<p class="muted dc-note">Lãi còn phải trả của khoản vay chưa có ngày đáo hạn là số tạm tính.</p>' : '');
+
+  // 3) Mốc quan trọng
+  const ms = debtMilestones(gs);
+  if (ms.length) html += `<h2 class="sec-title">Mốc sắp tới</h2><div class="card ms"><ul>${ms.map(m => `<li style="--gc:${m.g.color}"><span class="ms-d"><b>${fmtD(m.d)}</b><small>còn ${daysTo(m.d)} ngày</small></span><span class="ms-t"><span class="ms-g">${esc(m.g.short)}</span>${m.t}</span></li>`).join('')}</ul></div>`;
+
+  // 4) Theo năm
+  const years = [...new Set(gs.flatMap(g => g.rows.map(r => r.thang.slice(0, 4))))].sort();
+  const thisY = today.slice(0, 4);
+  if (!debtYear || !years.includes(debtYear)) debtYear = years.includes(thisY) ? thisY : years[years.length - 1];
+  const noPlan = (g, y) => g.openEnded && g.lastDate && y > g.lastDate.slice(0, 4);   // khoản chưa có ngày đáo hạn: chỉ có lịch 24 tháng tới
+  const yData = years.map(y => ({ y, v: gs.map(g => g.rows.filter(r => r.thang.startsWith(y)).reduce((a, r) => ({ g: a.g + r.cash, l: a.l + r.lai }), { g: 0, l: 0 })) }));
+  const yList = `<div class="ylist">${yData.map(({ y, v }) => {
+    const tot = v.reduce((a, x) => a + x.g + x.l, 0), st = y < thisY ? 'Đã trả' : y > thisY ? 'Dự kiến' : 'Đang trả';
+    return `<button type="button" class="yi${y === debtYear ? ' on' : ''}${y < thisY ? ' past' : ''}" data-y="${y}"><span class="yi-h"><b>${y}</b><small>${st}</small><b class="yi-t">${fmt(tot)}</b></span>
+      ${gs.map((g, j) => noPlan(g, y) ? `<span class="yi-r" style="--gc:${g.color}"><i></i>${esc(g.short)}<span class="np">chưa có lịch (chưa biết ngày đáo hạn)</span></span>`
+        : `<span class="yi-r" style="--gc:${g.color}"><i></i>${esc(g.short)}<span>gốc <b>${fmt(v[j].g)}</b></span><span>lãi <b>${fmt(v[j].l)}</b></span></span>`).join('')}</button>`;
+  }).join('')}</div>`;
+  const yRows = years.map(y => {
+    const v = gs.map(g => g.rows.filter(r => r.thang.startsWith(y)).reduce((a, r) => ({ g: a.g + r.cash, l: a.l + r.lai }), { g: 0, l: 0 }));
+    const tot = v.reduce((a, x) => a + x.g + x.l, 0), st = y < thisY ? 'Đã trả' : y > thisY ? 'Dự kiến' : 'Đang trả';
+    return `<tr class="${y === debtYear ? 'next' : y < thisY ? 'past' : ''}" data-y="${y}"><td><b>${y}</b></td>${v.map((x, j) => noPlan(gs[j], y) ? '<td colspan="2"><small>chưa có lịch</small></td>' : `<td>${fmt(x.g)}</td><td>${fmt(x.l)}</td>`).join('')}<td><b>${fmt(tot)}</b></td><td>${st}</td></tr>`;
+  }).join('');
+  html += `<h2 class="sec-title">Phải trả theo năm</h2><p class="muted">Bấm vào một năm để xem chi tiết từng kỳ bên dưới. Gốc là tiền thật bỏ ra (không gồm gốc đảo nợ).</p>
+    ${yList}<div class="tablewrap ydesk"><table class="tbl clickable" id="debt-years"><tr><th>Năm</th>${gs.map(g => `<th>${esc(g.short)} gốc</th><th>${esc(g.short)} lãi</th>`).join('')}<th>Tổng</th><th>Trạng thái</th></tr>${yRows}
+    <tr class="total"><td>Cộng</td>${gs.map(g => `<td>${fmt(g.rows.reduce((a, r) => a + r.cash, 0))}</td><td>${fmt(g.rows.reduce((a, r) => a + r.lai, 0))}</td>`).join('')}<td>${fmt(gs.reduce((a, g) => a + g.rows.reduce((b, r) => b + r.cash + r.lai, 0), 0))}</td><td></td></tr></table></div>`;
+
+  // 5) Từng kỳ trong năm
+  const months = Array.from({ length: 12 }, (_, i) => debtYear + '-' + String(i + 1).padStart(2, '0'));
+  let cum = 0;
+  const mRows = months.map(mm => {
+    const parts = gs.map(g => g.rows.filter(r => r.thang === mm));
+    if (!parts.some(p => p.length)) return '';
+    const tot = parts.flat().reduce((a, r) => a + r.cash + r.lai, 0); cum += tot;
+    const done = parts.flat().every(r => r.da_qua), soon = parts.flat().some(r => !r.da_qua && daysTo(r.ngay) <= 31);
+    return `<tr class="${done ? 'past' : soon ? 'next' : ''}"><td><b>T${+mm.slice(5)}/${mm.slice(0, 4)}</b></td>${parts.map(p => `<td>${p.length ? p.map(r => `<b>${fmt(r.cash + r.lai)}</b><small>${dmy(r.ngay)} · gốc ${fmt(r.cash)} · lãi ${fmt(r.lai)} (${rowRates(r)})${r.dao_no ? ' · đảo nợ ' + fmt(r.goc) : ''}</small>`).join('') : '–'}</td>`).join('')}
+      <td><b>${fmt(tot)}</b></td><td>${fmt(cum)}</td><td>${done ? 'Đã trả' : 'Dự kiến'}</td></tr>`;
+  }).join('');
+  html += `<div class="sect-h"><h2 class="sec-title" style="margin:0">Từng kỳ năm ${debtYear}</h2><div class="chips yr">${years.map(y => `<button type="button" class="chip${y === debtYear ? ' on' : ''}" data-dy="${y}">${y}</button>`).join('')}</div></div>
+    <div class="tablewrap"><table class="tbl rsp debt-months"><tr><th>Tháng</th>${gs.map(g => `<th>${esc(g.short)}</th>`).join('')}<th>Tổng tháng</th><th>Lũy kế năm</th><th>Trạng thái</th></tr>${mRows}</table></div>`;
+  el.innerHTML = html;
+}
+
 /* ---------- so sánh các năm ---------- */
 function renderCompare() {
   const p = $('#th-nguoi').value, hm = $('#cmp-hm').value;
@@ -805,7 +924,11 @@ function renderAll() {
   if (active === 'tab-vay') renderLoans();
   if (active === 'tab-cd') renderBudgetForm();
   if (active === 'tab-ds') renderList();
-  if (active === 'tab-th') renderSummary();
+  if (active === 'tab-th') {
+    document.querySelectorAll('#th-view button').forEach(x => x.classList.toggle('on', x.dataset.v === thView));
+    $('#th-ct').hidden = thView !== 'ct'; $('#th-no').hidden = thView !== 'no';
+    if (thView === 'no') renderDebtView(); else renderSummary();
+  }
   $('#pendingCount').textContent = state.pending.length;
   labelTables();
   const names = [...new Set(records().map(r => r.ten))].sort((a, b) => a.localeCompare(b, 'vi'));
@@ -890,6 +1013,11 @@ function init() {
   $('#ds-view').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { dsView = b.dataset.view; save('cthn.dsview', dsView); renderList(); } });
   $('#dsList').addEventListener('click', e => { const b = e.target.closest('.more'); if (b) { const k = b.dataset.more; dsLimit[k] = (dsLimit[k] || (k === 'ngay' ? 300 : 80)) + 200; renderList(); } });
   document.addEventListener('click', onRateClick);
+  $('#th-view').addEventListener('click', e => { const x = e.target.closest('button'); if (x) { thView = x.dataset.v; save('cthn.thview', thView); renderAll(); } });
+  $('#th-no').addEventListener('click', e => {
+    const y = e.target.closest('[data-dy]') || e.target.closest('#debt-years tr[data-y]') || e.target.closest('.yi[data-y]');
+    if (y) { debtYear = y.dataset.dy || y.dataset.y; renderDebtView(); }
+  });
   $('#modalX').onclick = closeModal;
   $('#modal').addEventListener('click', e => {
     if (e.target === $('#modal')) return closeModal();

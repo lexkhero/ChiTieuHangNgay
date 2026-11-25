@@ -119,6 +119,9 @@
 
         <!-- TỔNG HỢP -->
         <section id="tab-th" class="tab">
+          <div class="seg-toggle wide" id="th-view"><button data-v="ct" class="on">Chi tiêu</button><button data-v="no">Nợ vay</button></div>
+          <div id="th-no" hidden></div>
+          <div id="th-ct">
           <div class="toolbar card">
             <select id="th-nam"></select>
             <select id="th-thang"></select>
@@ -140,6 +143,7 @@
             <div class="card-h"><h2>So sánh các năm</h2><select id="cmp-hm" class="slim"><option value="">Tất cả hạng mục</option></select></div>
             <p class="muted">Theo bộ lọc "người" ở trên. Ô đỏ: cao hơn cùng kỳ năm trước, ô xanh: thấp hơn.</p>
             <div class="tablewrap"><table id="cmp-table" class="tbl"></table></div>
+          </div>
           </div>
         </section>
 
