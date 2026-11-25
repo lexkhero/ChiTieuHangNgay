@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f4e78">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Chi tiêu">
+  <title>Chi tiêu hằng ngày</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Chi tiêu hằng ngày</h1>
+    <button id="syncBtn" class="sync" title="Đồng bộ với Google Sheet">⟳</button>
+  </header>
+  <div id="status" class="status" hidden></div>
+
+  <main>
+    <!-- NHẬP -->
+    <section id="tab-nhap" class="tab active">
+      <form id="form" autocomplete="off">
+        <input type="hidden" id="f-id">
+        <div class="row">
+          <label>Ngày<input type="date" id="f-ngay" required></label>
+          <label>Số tiền (đ)<input type="text" id="f-tien" inputmode="numeric" placeholder="0" required></label>
+        </div>
+        <div class="quick" id="quickAmt"></div>
+
+        <div class="field">
+          <span class="lbl">Người</span>
+          <div class="chips" id="f-nguoi"></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Loại</span>
+          <div class="chips" id="f-loai"></div>
+        </div>
+
+        <label>Khoản chi
+          <input type="text" id="f-ten" list="names" placeholder="VD: Cháo canh, Nhậu, Học phí…" required>
+        </label>
+        <datalist id="names"></datalist>
+        <div class="quick" id="quickNames"></div>
+
+        <label>Hạng mục <small id="catHint" class="muted"></small>
+          <select id="f-hangmuc"></select>
+        </label>
+        <label>Ghi chú<input type="text" id="f-ghichu" placeholder="(không bắt buộc)"></label>
+
+        <div class="actions">
+          <button type="submit" class="primary" id="saveBtn">Lưu khoản chi</button>
+          <button type="button" id="cancelEdit" hidden>Hủy sửa</button>
+          <button type="button" id="deleteBtn" class="danger" hidden>Xóa</button>
+        </div>
+      </form>
+
+      <h2>Hôm nay <span id="todayTotal" class="amount"></span></h2>
+      <ul id="todayList" class="list"></ul>
+    </section>
+
+    <!-- DANH SÁCH -->
+    <section id="tab-ds" class="tab">
+      <div class="filters">
+        <select id="ds-thang"></select>
+        <select id="ds-nguoi"><option value="">Tất cả người</option></select>
+        <select id="ds-hangmuc"><option value="">Tất cả hạng mục</option></select>
+        <input type="search" id="ds-tim" placeholder="Tìm khoản chi">
+      </div>
+      <div class="sum-line">Tổng: <b id="ds-tong"></b> · <span id="ds-dem"></span> khoản</div>
+      <ul id="dsList" class="list"></ul>
+    </section>
+
+    <!-- TỔNG HỢP -->
+    <section id="tab-th" class="tab">
+      <div class="filters">
+        <select id="th-nam"></select>
+        <select id="th-thang"></select>
+        <select id="th-nguoi"><option value="">Cả nhà</option></select>
+      </div>
+      <div class="cards">
+        <div class="card"><span>Tổng chi</span><b id="th-tong"></b></div>
+        <div class="card"><span id="th-bq-lbl">Bình quân</span><b id="th-bq"></b></div>
+        <div class="card"><span>Số khoản</span><b id="th-dem"></b></div>
+      </div>
+      <h2>Theo hạng mục</h2>
+      <div id="th-hangmuc" class="bars"></div>
+      <h2>Theo người</h2>
+      <div id="th-nguoi-bars" class="bars"></div>
+      <h2 id="th-thang-title">Theo tháng</h2>
+      <div id="th-thang-bars" class="bars"></div>
+      <h2>Khoản chi lớn nhất</h2>
+      <ul id="th-top" class="list"></ul>
+    </section>
+
+    <!-- CÀI ĐẶT -->
+    <section id="tab-cd" class="tab">
+      <h2>Kết nối Google Sheet</h2>
+      <label>Địa chỉ Web App (Apps Script)
+        <input type="url" id="cfg-url" placeholder="https://script.google.com/macros/s/…/exec">
+      </label>
+      <label>Mã bí mật (SECRET)
+        <input type="password" id="cfg-key">
+      </label>
+      <div class="actions">
+        <button class="primary" id="cfg-save">Lưu &amp; kiểm tra</button>
+      </div>
+      <p class="muted" id="cfg-info"></p>
+
+      <h2>Nạp dữ liệu ban đầu</h2>
+      <p class="muted">Chọn file <b>seed-2026.json</b> (không đưa file này lên GitHub). Nạp lại nhiều lần cũng không bị trùng.</p>
+      <input type="file" id="seedFile" accept=".json,application/json">
+      <div class="progress" id="seedProg" hidden><div></div></div>
+
+      <h2>Khác</h2>
+      <div class="actions">
+        <button id="exportBtn">Xuất CSV</button>
+        <button id="reloadBtn">Tải lại toàn bộ từ Sheet</button>
+      </div>
+      <p class="muted">Khoản chưa gửi được: <b id="pendingCount">0</b></p>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-tab="tab-nhap" class="active">＋<span>Nhập</span></button>
+    <button data-tab="tab-ds">☰<span>Danh sách</span></button>
+    <button data-tab="tab-th">▤<span>Tổng hợp</span></button>
+    <button data-tab="tab-cd">⚙<span>Cài đặt</span></button>
+  </nav>
+
+  <script src="classifier.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
