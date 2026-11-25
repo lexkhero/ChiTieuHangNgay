@@ -211,12 +211,23 @@ const dmy = s => (s ? s.slice(8, 10) + '/' + s.slice(5, 7) : '');
 const compact = n => (n >= 1e9 ? (n / 1e9).toFixed(2) + ' tỷ' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' tr' : fmt(n));
 
 /* ---------- danh sách ---------- */
-/** mode: 'nguoi' (nhãn = ngày) | 'ngay' (nhãn = tên người) | 'top' (nhãn = tên người, kèm ngày) */
+const CATS_ABC = CATS.filter(c => c !== 'Khác' && c !== 'Chưa rõ').sort((a, b) => a.localeCompare(b, 'vi')).concat(CATS.filter(c => c === 'Khác' || c === 'Chưa rõ'));
+const WD = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+const catCol = c => { const i = CATS_ABC.indexOf(c); return i < 0 ? '#64748b' : PAL[i % PAL.length]; };
+const isSheetRef = g => /![A-Z]+\d+$/.test(String(g || '')); // ghi chú tự sinh "Tháng 11/2026!D44" (vị trí ô sổ cũ)
+/** mode: 'nguoi' (ô trái = ngày) | 'ngay' (ô trái = người) | 'top' (ô trái = người, kèm ngày) */
 function recHtml(r, pend, mode) {
-  const badge = mode === 'nguoi' ? `<span class="d">${r.ngay ? dmy(r.ngay) : 'T' + r.thang.slice(5)}</span>`
-    : `<span class="d tag" style="--pc:${pcol(r.nguoi)}">${esc(r.nguoi)}</span>`;
-  const meta = [mode === 'top' && r.ngay ? dmy(r.ngay) : '', r.hangmuc, r.loai !== 'Chung' ? r.loai : '', r.ghichu].filter(Boolean).join(' · ');
-  return `<li class="rec" data-id="${esc(r.id)}">${badge}<div><span class="t">${esc(r.ten)}${pend.has(r.id) ? '<span class="pend">chờ gửi</span>' : ''}</span><span class="m">${esc(meta)}</span></div><span class="a">${fmt(r.tien)}</span></li>`;
+  let lead;
+  if (mode === 'nguoi') {
+    lead = r.ngay ? `<span class="lead day"><b>${+r.ngay.slice(8)}</b><small>${WD[new Date(r.ngay + 'T00:00').getDay()]}</small></span>`
+      : `<span class="lead day old"><b>T${+r.thang.slice(5)}</b><small>sổ cũ</small></span>`;
+  } else lead = `<span class="lead who" style="--pc:${pcol(r.nguoi)}">${esc(r.nguoi === 'Chung' ? 'Ch' : r.nguoi.slice(0, 1))}</span>`;
+  const chips = [`<span class="cat" style="--cc:${catCol(r.hangmuc)}"><i></i>${esc(r.hangmuc)}</span>`];
+  if (mode !== 'nguoi') chips.unshift(`<span class="who-t">${esc(r.nguoi)}${mode === 'top' && r.ngay ? ' · ' + dmy(r.ngay) : ''}</span>`);
+  if (r.loai && r.loai !== 'Chung') chips.push(`<span class="kind">${esc(r.loai)}</span>`);
+  const note = r.ghichu && !isSheetRef(r.ghichu) ? `<span class="note">${esc(r.ghichu)}</span>` : '';
+  return `<li class="rec" data-id="${esc(r.id)}">${lead}<div class="body"><span class="t">${esc(r.ten)}</span><span class="m">${chips.join('')}</span>${note}</div>
+    <div class="amt"><b>${fmt(r.tien)}</b>${pend.has(r.id) ? '<small class="pend">chờ gửi</small>' : ''}</div></li>`;
 }
 function renderToday() {
   const t = $('#f-ngay').value || todayStr();
@@ -289,8 +300,8 @@ function renderList() {
 /** rows: [{key, label, v, extra, ratio, color}] */
 function bars(el, rows, total, onClick) {
   const max = Math.max(1, ...rows.map(r => r.v));
-  el.innerHTML = rows.length ? rows.map(r => `<div class="bar" data-k="${esc(r.key)}" style="--bc:${r.color || 'var(--ac)'}"><div class="h"><span><i class="sw"></i>${esc(r.label)}</span>
-    <span><b>${fmt(r.v)}</b> <small>${total ? (r.v / total * 100).toFixed(1) + '%' : ''}${r.extra ? ' · ' + esc(r.extra) : ''}</small></span></div>
+  el.innerHTML = rows.length ? rows.map(r => `<div class="bar" data-k="${esc(r.key)}" style="--bc:${r.color || 'var(--ac)'}"><div class="h"><span class="nm"><i class="sw"></i><span>${esc(r.label)}<small>${total ? (r.v / total * 100).toFixed(1) + '%' : ''}${r.extra ? ' · ' + esc(r.extra) : ''}</small></span></span>
+    <b class="v">${fmt(r.v)}</b></div>
     <div class="track"><div class="fill${r.ratio > 1 ? ' over' : r.ratio >= 0.9 ? ' warn' : ''}" style="width:${(r.ratio ? Math.min(100, r.ratio * 100) : r.v / max * 100).toFixed(1)}%"></div></div></div>`).join('')
     : '<p class="muted">Chưa có dữ liệu</p>';
   el.onclick = e => { const b = e.target.closest('.bar'); if (b && onClick) onClick(b.dataset.k); };
@@ -314,7 +325,7 @@ function groupSum(rs, key) {
 const kpi = (label, val, color, sub) => `<div class="kpi" style="--kc:${color}"><span>${label}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
 function renderSummary() {
   const all = records();
-  const years = [...new Set(all.map(r => (r.thang || '').slice(0, 4)).filter(Boolean))]; years.push(todayStr().slice(0, 4), String(+todayStr().slice(0, 4) + 1), String(+todayStr().slice(0, 4) + 2)); // năm tới để xem nợ phải trả dự kiến
+  const years = [...new Set(all.map(r => (r.thang || '').slice(0, 4)).filter(Boolean))]; years.push(todayStr().slice(0, 4));
   fillSelect($('#th-nam'), [...new Set(years)].sort().reverse().map(y => [y, 'Năm ' + y]));
   if (!$('#th-nam').dataset.init) { $('#th-nam').value = todayStr().slice(0, 4); $('#th-nam').dataset.init = 1; }
   const y = $('#th-nam').value;
@@ -329,7 +340,7 @@ function renderSummary() {
   const loans = conf().loans || [];
   if (loans.length && !p) {
     const d = debtTotals(loans, y, m);
-    k += kpi('Trả nợ gốc', fmt(d.goc) + ' đ', '#fb923c', 'xe + nhà') + kpi('Trả nợ lãi', fmt(d.lai) + ' đ', 'var(--bad)', 'xe + nhà') + kpi('Chi tiêu + trả nợ', fmt(total + d.goc + d.lai) + ' đ', '#a78bfa', '');
+    k += kpi('Trả nợ gốc', fmt(d.goc) + ' đ', '#fb923c', 'chi tiết ở tab Khoản vay') + kpi('Trả nợ lãi', fmt(d.lai) + ' đ', 'var(--bad)', 'xe + nhà') + kpi('Chi tiêu + trả nợ', fmt(total + d.goc + d.lai) + ' đ', '#a78bfa', '');
   }
   $('#th-kpis').innerHTML = k;
 
@@ -354,7 +365,6 @@ function renderSummary() {
     vbars($('#th-thang-bars'), Array.from({ length: 12 }, (_, i) => { const mm = y + '-' + String(i + 1).padStart(2, '0'); return { key: mm, label: 'Tháng ' + (i + 1), short: 'T' + (i + 1), v: (g.get(mm) || [0])[0] }; }),
       mm => { $('#th-thang').value = mm; renderSummary(); });
   }
-  renderDebtSection(y, m);
   renderCompare();
   const pend = pendingIds();
   $('#th-top').innerHTML = [...rs].sort((a, b) => b.tien - a.tien).slice(0, 10).map(r => recHtml(r, pend, 'top')).join('') || '<li class="empty">Chưa có dữ liệu</li>';
@@ -492,9 +502,12 @@ function rateTableHtml(c) {
 
 function scheduleHtml(c) {
   const { s } = c, k = s.ky_toi;
+  const row = r => `<tr class="${r.da_qua ? 'past' : k && r.ky === k.ky ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(r.goc)}${r.tra_truoc ? '<br><small>+' + fmt(r.tra_truoc) + ' trả trước</small>' : ''}${r.dao_no ? '<br><small>đảo nợ: khoản vay mới trả gốc</small>' : ''}</td><td>${fmt(r.lai)}</td><td>${fmt(r.tong)}</td>
+      <td class="act">${r.da_qua ? '' : `<button type="button" class="btn sm" data-rt="from" data-loan="${c.i}" data-date="${r.tu_ngay}" title="Đổi lãi suất áp dụng từ đầu kỳ này">Đổi lãi</button>`}</td></tr>`;
+  const sap = s.rows.filter(r => !r.da_qua), da = s.rows.filter(r => r.da_qua).reverse(); // sắp tới: gần nhất trước; đã trả: mới nhất trước
+  const grp = (t, n) => `<tr class="grp"><td colspan="8">${t} (${n} kỳ)</td></tr>`;
   return `<div class="sect-h"><h4><svg class="ic"><use href="#i-cal"/></svg>Lịch trả nợ</h4></div><div class="tablewrap"><table class="tbl rsp"><tr><th>Kỳ</th><th>Ngày</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th></th></tr>${
-    s.rows.map(r => `<tr class="${r.da_qua ? 'past' : k && r.ky === k.ky ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(r.goc)}${r.tra_truoc ? '<br><small>+' + fmt(r.tra_truoc) + ' trả trước</small>' : ''}${r.dao_no ? '<br><small>đảo nợ: khoản vay mới trả gốc</small>' : ''}</td><td>${fmt(r.lai)}</td><td>${fmt(r.tong)}</td>
-      <td class="act">${r.da_qua ? '' : `<button type="button" class="btn sm" data-rt="from" data-loan="${c.i}" data-date="${r.tu_ngay}" title="Đổi lãi suất áp dụng từ đầu kỳ này">Đổi lãi</button>`}</td></tr>`).join('')
+    (sap.length ? grp('Sắp tới', sap.length) + sap.map(row).join('') : '') + (da.length ? grp('Đã trả', da.length) + da.map(row).join('') : '')
   }</table></div>`;
 }
 
@@ -546,9 +559,9 @@ function loanCardHtml(c, loans, today) {
   const seg = k ? `<div class="seg">Cách tính lãi kỳ tới:<br>${k.chi_tiet_lai.map(p => `${fmtD(p.tu)} → ${fmtD(p.den)}: ${p.so_ngay} ngày × ${fmt(p.du_no)} × ${p.lai_suat}% / 365 = <b>${fmt(p.lai)}</b>`).join('<br>')}</div>` : '';
   return `<div class="loan"><div class="loan-h"><h3>${esc(l.ten)}</h3>${loanBadge(c)}</div>${chainInfo(c, loans, today)}
     ${loanKv(c, today)}${rateTableHtml(c)}${seg}
-    <div class="actions" style="margin-top:14px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch trả nợ' : 'Xem lịch trả nợ'}</button>
-      <button type="button" class="btn sm" data-roll="${i}"><svg class="ic"><use href="#i-sync"/></svg>Đáo hạn &amp; vay khoản mới</button>
-      <button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa khoản vay</button></div>
+    <div class="actions" style="margin-top:14px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch' : 'Lịch trả nợ'}</button>
+      <button type="button" class="btn sm" data-roll="${i}" title="Đáo hạn khoản cũ &amp; vay khoản mới"><svg class="ic"><use href="#i-sync"/></svg>Đảo nợ</button>
+      <button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa</button></div>
     ${rollEdit === i ? rollFormHtml(c) : ''}${openSched.has(l.id) ? scheduleHtml(c) : ''}</div>`;
 }
 function doneCardHtml(c) {
@@ -558,7 +571,7 @@ function doneCardHtml(c) {
     <div class="kv"><div><span>Giải ngân</span><b>${fmtD(l.ngay_giai_ngan)}</b></div><div><span>Đáo hạn</span><b>${fmtD(last.ngay)}</b></div>
       <div><span>Số tiền vay</span><b>${fmt(l.so_tien_vay)}</b></div><div><span>Lãi suất</span><b class="rate">${(l.lai_suat || []).map(r => r.nam + '%').join(' → ')}</b></div>
       <div><span>Tổng lãi đã trả</span><b>${fmt(lai)}</b></div><div><span>Số kỳ</span><b>${s.rows.length}</b></div></div>
-    <div class="actions" style="margin-top:12px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch trả nợ' : 'Xem lịch trả nợ'}</button><button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa</button></div>
+    <div class="actions" style="margin-top:12px"><button type="button" class="btn sm" data-sched="${esc(l.id)}">${openSched.has(l.id) ? 'Ẩn lịch' : 'Lịch trả nợ'}</button><button type="button" class="btn sm" data-edit="${i}"><svg class="ic"><use href="#i-edit"/></svg>Sửa</button></div>
     ${openSched.has(l.id) ? scheduleHtml(c) : ''}</div>`;
 }
 function renderLoans() {
@@ -690,28 +703,6 @@ function openLoanEditor(idx) {
   };
 }
 
-/* ---------- nợ vay trong Tổng hợp ---------- */
-function renderDebtSection(y, m) {
-  const el = $('#th-debt'), loans = conf().loans || [], today = todayStr();
-  if (!loans.length) { el.innerHTML = ''; return; }
-  const tot = debtTotals(loans, y, m), label = m ? monthLabel(m) : 'năm ' + y;
-  let html = `<h2 class="sec-title">Nợ vay · ${esc(label)}</h2><div class="kpis">${kpi('Tổng dư nợ hiện tại', fmt(tot.duNo) + ' đ', '#fb923c', 'xe + nhà')}${kpi('Gốc phải trả', fmt(tot.goc) + ' đ', 'var(--ac)', 'đã trả + dự kiến')}${kpi('Lãi phải trả', fmt(tot.lai) + ' đ', 'var(--bad)', 'đã trả + dự kiến')}${kpi('Gốc + lãi', fmt(tot.goc + tot.lai) + ' đ', '#a78bfa', '')}</div>`;
-  html += loans.map((l, i) => {
-    const c = loanCtx(l, i, today);
-    if (c.s && !c.s.rows.some(r => r.thang.startsWith(y) && (!m || r.thang === m))) return '';
-    if (!c.s) return `<div class="loan"><h3>${esc(l.ten)}</h3><p class="muted">Cấu hình lỗi: ${esc(c.err)}</p></div>`;
-    const nextKy = c.s.ky_toi && c.s.ky_toi.ky;
-    const rows = c.s.rows.filter(r => r.thang.startsWith(y) && (!m || r.thang === m));
-    const sg = rows.reduce((a, r) => ({ goc: a.goc + cg(r) + r.tra_truoc, lai: a.lai + r.lai }), { goc: 0, lai: 0 });
-    const tbl = rows.length ? `<div class="tablewrap"><table class="tbl rsp"><tr><th>Kỳ</th><th>Ngày trả</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th>Trạng thái</th></tr>${
-      rows.map(r => `<tr class="${r.da_qua ? 'past' : r.ky === nextKy ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(cg(r) + r.tra_truoc)}${r.tra_truoc ? `<br><small>gồm ${fmt(r.tra_truoc)} trả trước</small>` : ''}${r.dao_no ? `<br><small>${fmt(r.goc)} đảo nợ</small>` : ''}</td><td>${fmt(r.lai)}</td><td><b>${fmt(r.tong + r.tra_truoc)}</b></td><td>${r.dao_no ? 'Đáo hạn, đảo nợ' : r.da_qua ? 'Đã trả' : r.ky === nextKy ? 'Sắp tới' : 'Dự kiến'}</td></tr>`).join('')
-    }<tr class="total"><td colspan="4">Cộng ${esc(label)}</td><td>${fmt(sg.goc)}</td><td>${fmt(sg.lai)}</td><td>${fmt(sg.goc + sg.lai)}</td><td></td></tr></table></div>` : '<p class="muted">Không có kỳ trả nợ nào trong khoảng thời gian này.</p>';
-    return `<div class="loan"><div class="loan-h"><h3>${esc(l.ten)}</h3>${loanBadge(c)}</div>${chainInfo(c, loans, today)}${loanDone(c) ? '' : loanKv(c, today)}${rateTableHtml(c)}
-      <div class="sect-h"><h4><svg class="ic"><use href="#i-cal"/></svg>Gốc &amp; lãi phải trả · ${esc(label)}</h4></div>${tbl}</div>`;
-  }).join('');
-  el.innerHTML = html;
-}
-
 /* ---------- so sánh các năm ---------- */
 function renderCompare() {
   const p = $('#th-nguoi').value, hm = $('#cmp-hm').value;
@@ -743,7 +734,7 @@ function renderCompare() {
 function renderBudgetForm() {
   if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#budgetForm')) return;
   const b = conf().budgets || {};
-  $('#budgetForm').innerHTML = CATS.filter(c => c !== 'Chưa rõ').map(c =>
+  $('#budgetForm').innerHTML = CATS_ABC.filter(c => c !== 'Chưa rõ').map(c =>
     `<span>${esc(c)}</span><input data-cat="${esc(c)}" inputmode="numeric" placeholder="—" value="${b[c] ? fmt(b[c]) : ''}">`).join('');
 }
 function saveBudgets() {
@@ -781,6 +772,40 @@ function renderAll() {
   if ($('#names').childElementCount !== names.length) $('#names').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
 }
 
+/** Biến <select> thành ô chọn có tìm kiếm (giữ nguyên select gốc để code cũ dùng .value/change) */
+const fold = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+function comboSelect(sel) {
+  const wrap = document.createElement('div'); wrap.className = 'combo';
+  sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel); sel.classList.add('combo-src');
+  wrap.insertAdjacentHTML('beforeend', `<button type="button" class="combo-btn"><span></span><svg class="ic"><use href="#i-down"/></svg></button>
+    <div class="combo-pop" hidden><label class="search"><svg class="ic"><use href="#i-search"/></svg><input type="search" placeholder="Tìm hạng mục…" autocomplete="off"></label><ul></ul></div>`);
+  const btn = wrap.querySelector('.combo-btn'), pop = wrap.querySelector('.combo-pop'), q = pop.querySelector('input'), ul = pop.querySelector('ul');
+  const refresh = () => { const o = sel.options[sel.selectedIndex]; btn.firstElementChild.textContent = o ? o.text : ''; };
+  const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  Object.defineProperty(sel, 'value', { get() { return d.get.call(this); }, set(v) { d.set.call(this, v); refresh(); } });
+  let hi = 0;
+  const list = () => {
+    const f = fold(q.value.trim()), opts = [...sel.options].filter(o => !f || fold(o.text).includes(f));
+    hi = Math.min(hi, Math.max(0, opts.length - 1));
+    ul.innerHTML = opts.map((o, i) => `<li data-v="${esc(o.value)}" class="${o.value === sel.value ? 'sel' : ''}${i === hi ? ' hi' : ''}">${o.value && CATS.includes(o.value) ? `<i style="--cc:${catCol(o.value)}"></i>` : ''}${esc(o.text)}</li>`).join('') || '<li class="none">Không có hạng mục phù hợp</li>';
+  };
+  const close = () => { pop.hidden = true; wrap.classList.remove('open'); };
+  const pick = v => { if (v == null) return; sel.value = v; sel.dispatchEvent(new Event('change', { bubbles: true })); close(); };
+  btn.onclick = () => { if (!pop.hidden) return close(); document.querySelectorAll('.combo.open').forEach(w => w !== wrap && w.querySelector('.combo-btn').click());
+    pop.hidden = false; wrap.classList.add('open'); q.value = ''; hi = Math.max(0, sel.selectedIndex); list(); q.focus({ preventScroll: true }); const s2 = ul.querySelector('.sel'); if (s2) s2.scrollIntoView({ block: 'nearest' }); };
+  q.oninput = () => { hi = 0; list(); };
+  q.onkeydown = e => {
+    const n = ul.querySelectorAll('li[data-v]').length;
+    if (e.key === 'ArrowDown') { hi = Math.min(n - 1, hi + 1); list(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { hi = Math.max(0, hi - 1); list(); e.preventDefault(); }
+    else if (e.key === 'Enter') { const li = ul.querySelectorAll('li[data-v]')[hi]; if (li) pick(li.dataset.v); e.preventDefault(); }
+    else if (e.key === 'Escape') close();
+  };
+  ul.onclick = e => { const li = e.target.closest('li[data-v]'); if (li) pick(li.dataset.v); };
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+  sel.addEventListener('change', refresh);
+  refresh();
+}
 function toggleTheme() {
   const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   const next = cur === 'light' ? 'dark' : 'light';
@@ -789,7 +814,7 @@ function toggleTheme() {
   const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.content = next === 'light' ? '#f3f5fb' : '#0b1020';
 }
 function init() {
-  const catOpts = CATS.map(c => `<option>${esc(c)}</option>`).join('');
+  const catOpts = CATS_ABC.map(c => `<option>${esc(c)}</option>`).join('');
   $('#f-hangmuc').innerHTML = catOpts;
   $('#ds-hangmuc').innerHTML += catOpts;
   const pOpts = PEOPLE.map(p => `<option>${esc(p)}</option>`).join('');
@@ -829,7 +854,8 @@ function init() {
   $('#budgetSave').onclick = saveBudgets;
   $('#tgTest').onclick = async () => { try { await apiPost({ action: 'testTelegram' }); toast('Đã gửi tin nhắn thử qua Telegram', 'ok'); } catch (e) { toast(e.message, 'err'); } };
   $('#loanAdd').onclick = () => openLoanEditor(null);
-  $('#cmp-hm').innerHTML += CATS.map(c => `<option>${esc(c)}</option>`).join('');
+  $('#cmp-hm').innerHTML += catOpts;
+  ['#f-hangmuc', '#ds-hangmuc', '#cmp-hm'].forEach(q => comboSelect($(q)));
   $('#cmp-hm').addEventListener('change', renderCompare);
   window.addEventListener('online', () => sync(true));
   resetForm();
