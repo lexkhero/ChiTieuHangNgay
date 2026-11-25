@@ -341,7 +341,6 @@ label { margin-bottom: 10px; }
   .btn.sm { padding: 5px 9px; font-size: 12px; }
   .btn.sm .ic { width: 14px; height: 14px; }
   .sect-h .btn { width: auto; }
-  .actions .btn.primary { flex: 1 1 100%; }
   .chip { padding: 5px 11px; font-size: 13px; }
   .quick button { padding: 4px 9px; font-size: 12px; }
   .combo-btn { font-size: 15px; padding: 8px 11px; }
@@ -357,3 +356,15 @@ label { margin-bottom: 10px; }
 .loan > .actions { flex-wrap: nowrap; }
 .loan > .actions .btn { flex: 1; min-width: 0; }
 @media (max-width: 340px) { .row { grid-template-columns: 1fr; } }
+
+/* v3.4: form Nhập trên iPhone */
+#form .actions { flex-wrap: nowrap; }
+#form .actions .btn { flex: none; }
+#form .actions .btn.primary { flex: 1 1 auto; min-width: 0; }
+.row { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+.row label { min-width: 0; }
+.row input { height: 46px; min-width: 0; line-height: normal; }
+input[type=date], input[type=month] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left; }
+input[type=date]::-webkit-date-and-time-value, input[type=month]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+input[type=date]::-webkit-calendar-picker-indicator { margin-left: 4px; }
+@media (max-width: 640px) { .row input { height: 44px; } .row input[type=date] { padding-left: 10px; padding-right: 8px; } }
