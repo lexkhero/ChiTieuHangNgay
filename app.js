@@ -316,6 +316,7 @@ function renderSummary() {
   const all = records();
   const years = [...new Set(all.map(r => (r.thang || '').slice(0, 4)).filter(Boolean))]; years.push(todayStr().slice(0, 4), String(+todayStr().slice(0, 4) + 1), String(+todayStr().slice(0, 4) + 2)); // năm tới để xem nợ phải trả dự kiến
   fillSelect($('#th-nam'), [...new Set(years)].sort().reverse().map(y => [y, 'Năm ' + y]));
+  if (!$('#th-nam').dataset.init) { $('#th-nam').value = todayStr().slice(0, 4); $('#th-nam').dataset.init = 1; }
   const y = $('#th-nam').value;
   fillSelect($('#th-thang'), [['', 'Cả năm'], ...Array.from({ length: 12 }, (_, i) => [y + '-' + String(i + 1).padStart(2, '0'), 'Tháng ' + (i + 1)])]);
   const m = $('#th-thang').value, p = $('#th-nguoi').value;
@@ -439,7 +440,7 @@ function loanKv(c, today) {
   const rate = currentRate(l, today), paid = s.rows.filter(r => r.da_qua);
   const gocDaTra = paid.reduce((a, r) => a + r.goc + r.tra_truoc, 0), laiDaTra = paid.reduce((a, r) => a + r.lai, 0);
   return `<div class="kv">
-    <div class="big"><span>Kỳ tới ${fmtD(k.ngay)}: gốc ${fmt(k.goc)} + lãi ${fmt(k.lai)}</span><b>${fmt(k.tong)} đ</b></div>
+    <div class="big"><span>Kỳ tới ${fmtD(k.ngay)}: gốc ${fmt(k.goc)} + lãi ${fmt(k.lai)}</span><b>${fmt(k.tong)} đ</b>${k.chi_tiet_lai.length > 1 ? `<small class="split">Lãi gồm: ${k.chi_tiet_lai.map(p => `${fmt(p.lai)} (${p.lai_suat}%, ${dmy(p.tu)}→${dmy(p.den)}, ${p.so_ngay} ngày)`).join(' + ')}</small>` : ''}</div>
     <div><span>Dư nợ hiện tại</span><b>${fmt(s.du_no_hien_tai)}</b></div>
     <div><span>Lãi suất hiện tại</span><b class="rate">${rate ? rate.nam + '%/năm' : '?'}</b></div>
     <div><span>Lãi tạm tính đến hôm nay</span><b>${fmt(s.lai_tam_tinh)}</b></div>
@@ -483,14 +484,14 @@ function rateTableHtml(c) {
   const paidLai = s.rows.filter(r => r.da_qua).reduce((a, r) => a + r.lai, 0);
   return `<div class="sect-h" id="rate-${i}"><h4><svg class="ic"><use href="#i-pct"/></svg>Lãi suất &amp; tiền lãi</h4>
       <button type="button" class="btn sm" data-rt="add" data-loan="${i}"><svg class="ic"><use href="#i-plus"/></svg>Thêm mốc đổi lãi suất</button></div>
-    <div class="tablewrap"><table class="tbl"><tr><th>Từ ngày</th><th>Đến ngày</th><th>Lãi suất</th><th>Số ngày</th><th>Tiền lãi</th><th>Trạng thái</th><th></th></tr>${rows}
+    <div class="tablewrap"><table class="tbl rsp"><tr><th>Từ ngày</th><th>Đến ngày</th><th>Lãi suất</th><th>Số ngày</th><th>Tiền lãi</th><th>Trạng thái</th><th></th></tr>${rows}
       <tr class="total"><td colspan="4">Cộng toàn lịch${l.so_thang ? '' : ' (24 tháng dự kiến)'}</td><td>${fmt(s.tong_lai)}<br><small>đã trả ${fmt(paidLai)}</small></td><td colspan="2"></td></tr></table></div>
     <p class="muted">Ngân hàng báo đổi lãi từ ngày nào thì bấm “Thêm mốc đổi lãi suất”, nhập ngày áp dụng và mức lãi mới (kể cả ngày trong tương lai). Bấm “Sửa” ở dòng bất kỳ để đổi ngày hoặc mức lãi: tiền lãi các kỳ sau, lịch trả nợ và số liệu tổng hợp tự tính lại.</p>`;
 }
 
 function scheduleHtml(c) {
   const { s } = c, k = s.ky_toi;
-  return `<div class="sect-h"><h4><svg class="ic"><use href="#i-cal"/></svg>Lịch trả nợ</h4></div><div class="tablewrap"><table class="tbl"><tr><th>Kỳ</th><th>Ngày</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th></th></tr>${
+  return `<div class="sect-h"><h4><svg class="ic"><use href="#i-cal"/></svg>Lịch trả nợ</h4></div><div class="tablewrap"><table class="tbl rsp"><tr><th>Kỳ</th><th>Ngày</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th></th></tr>${
     s.rows.map(r => `<tr class="${r.da_qua ? 'past' : k && r.ky === k.ky ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(r.goc)}${r.tra_truoc ? '<br><small>+' + fmt(r.tra_truoc) + ' trả trước</small>' : ''}</td><td>${fmt(r.lai)}</td><td>${fmt(r.tong)}</td>
       <td class="act">${r.da_qua ? '' : `<button type="button" class="btn sm" data-rt="from" data-loan="${c.i}" data-date="${r.tu_ngay}" title="Đổi lãi suất áp dụng từ đầu kỳ này">Đổi lãi</button>`}</td></tr>`).join('')
   }</table></div>`;
@@ -633,7 +634,7 @@ function renderDebtSection(y, m) {
     const nextKy = c.s.ky_toi && c.s.ky_toi.ky;
     const rows = c.s.rows.filter(r => r.thang.startsWith(y) && (!m || r.thang === m));
     const sg = rows.reduce((a, r) => ({ goc: a.goc + r.goc + r.tra_truoc, lai: a.lai + r.lai }), { goc: 0, lai: 0 });
-    const tbl = rows.length ? `<div class="tablewrap"><table class="tbl"><tr><th>Kỳ</th><th>Ngày trả</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th>Trạng thái</th></tr>${
+    const tbl = rows.length ? `<div class="tablewrap"><table class="tbl rsp"><tr><th>Kỳ</th><th>Ngày trả</th><th>Lãi suất</th><th>Dư nợ đầu kỳ</th><th>Gốc</th><th>Lãi</th><th>Tổng</th><th>Trạng thái</th></tr>${
       rows.map(r => `<tr class="${r.da_qua ? 'past' : r.ky === nextKy ? 'next' : ''}"><td>${r.ky}</td><td>${fmtD(r.ngay)}</td><td class="rate">${rowRates(r)}</td><td>${fmt(r.du_no_dau)}</td><td>${fmt(r.goc + r.tra_truoc)}${r.tra_truoc ? `<br><small>gồm ${fmt(r.tra_truoc)} trả trước</small>` : ''}</td><td>${fmt(r.lai)}</td><td><b>${fmt(r.tong + r.tra_truoc)}</b></td><td>${r.da_qua ? 'Đã trả' : r.ky === nextKy ? 'Sắp tới' : 'Dự kiến'}</td></tr>`).join('')
     }<tr class="total"><td colspan="4">Cộng ${esc(label)}</td><td>${fmt(sg.goc)}</td><td>${fmt(sg.lai)}</td><td>${fmt(sg.goc + sg.lai)}</td><td></td></tr></table></div>` : '<p class="muted">Không có kỳ trả nợ nào trong khoảng thời gian này.</p>';
     return `<div class="loan"><div class="loan-h"><h3>${esc(l.ten)}</h3>${loanBadge(c)}</div>${loanKv(c, today)}${rateTableHtml(c)}
@@ -690,6 +691,13 @@ function showTab(id) {
   $('#pageTitle').textContent = TITLES[id] || '';
   renderAll(); window.scrollTo({ top: 0 });
 }
+function labelTables() {
+  document.querySelectorAll('table.rsp:not([data-l])').forEach(t => {
+    const hs = [...t.querySelectorAll('tr:first-child th')].map(th => th.textContent.trim());
+    t.querySelectorAll('tr').forEach(tr => { let i = 0; tr.querySelectorAll('td').forEach(td => { td.dataset.l = hs[i] || ''; i += td.colSpan || 1; }); });
+    t.dataset.l = 1;
+  });
+}
 function renderAll() {
   const active = document.querySelector('.tab.active').id;
   if (document.activeElement && document.activeElement.matches && document.activeElement.matches('tr.edit input')) { $('#pendingCount').textContent = state.pending.length; return; }
@@ -699,6 +707,7 @@ function renderAll() {
   if (active === 'tab-ds') renderList();
   if (active === 'tab-th') renderSummary();
   $('#pendingCount').textContent = state.pending.length;
+  labelTables();
   const names = [...new Set(records().map(r => r.ten))].sort((a, b) => a.localeCompare(b, 'vi'));
   if ($('#names').childElementCount !== names.length) $('#names').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
 }
