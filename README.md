@@ -1,3 +1,7 @@
+> **Cập nhật bản 3 (giao diện mới):** chỉ cần upload lại các file trong thư mục này lên GitHub (Commit changes), chờ 2 phút rồi mở trang bấm Ctrl + F5.
+> **Không cần** làm lại Apps Script, URL /exec, SECRET hay nạp lại dữ liệu. Dữ liệu và cấu hình khoản vay giữ nguyên.
+> Trên điện thoại: đóng hẳn app rồi mở lại 1-2 lần để nhận bản mới.
+
 # ChiTieuHangNgay – Hướng dẫn cài đặt chi tiết
 
 Trang web (PWA) để nhập và tổng hợp chi tiêu hằng ngày, theo dõi khoản vay ô tô và nhà, cảnh báo đến hạn trả nợ.

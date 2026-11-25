@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1f4e78">
+  <meta name="theme-color" content="#0b1020">
+  <meta name="color-scheme" content="dark light">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Chi tiêu">
@@ -12,147 +13,187 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
+  <script>try{var t=localStorage.getItem('cthn.theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
 <body>
-  <header class="topbar">
-    <h1>Chi tiêu hằng ngày</h1>
-    <button id="syncBtn" class="sync" title="Đồng bộ với Google Sheet">⟳</button>
-  </header>
-  <div id="status" class="status" hidden></div>
+  <!-- Bộ icon (kiểu Lucide, nhúng sẵn để chạy offline) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></symbol>
+      <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3 22h18M6 18v-7M10 18v-7M14 18v-7M18 18v-7M12 2l8 5H4z"/></symbol>
+      <symbol id="i-set" viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></symbol>
+      <symbol id="i-sync" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+      <symbol id="i-pct" viewBox="0 0 24 24"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+      <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    </defs>
+  </svg>
 
-  <main>
-    <!-- NHẬP -->
-    <section id="tab-nhap" class="tab active">
-      <div id="alerts"></div>
-      <form id="form" autocomplete="off">
-        <input type="hidden" id="f-id">
-        <div class="row">
-          <label>Ngày<input type="date" id="f-ngay" required></label>
-          <label>Số tiền (đ)<input type="text" id="f-tien" inputmode="numeric" placeholder="0" required></label>
+  <div class="app">
+    <aside class="side">
+      <div class="brand"><span class="logo">₫</span><div><b>Chi tiêu</b><small>gia đình</small></div></div>
+      <nav class="nav" id="nav">
+        <button data-tab="tab-nhap" class="active"><svg class="ic"><use href="#i-plus"/></svg><span>Nhập</span></button>
+        <button data-tab="tab-ds"><svg class="ic"><use href="#i-list"/></svg><span>Danh sách</span></button>
+        <button data-tab="tab-th"><svg class="ic"><use href="#i-chart"/></svg><span>Tổng hợp</span></button>
+        <button data-tab="tab-vay"><svg class="ic"><use href="#i-bank"/></svg><span>Khoản vay</span></button>
+        <button data-tab="tab-cd"><svg class="ic"><use href="#i-set"/></svg><span>Cài đặt</span></button>
+      </nav>
+    </aside>
+
+    <div class="content">
+      <header class="topbar">
+        <h1 id="pageTitle">Nhập chi tiêu</h1>
+        <div class="tools">
+          <button id="themeBtn" class="icon-btn" title="Đổi giao diện sáng/tối"><svg class="ic"><use href="#i-moon"/></svg></button>
+          <button id="syncBtn" class="icon-btn" title="Đồng bộ với Google Sheet"><svg class="ic"><use href="#i-sync"/></svg></button>
         </div>
-        <div class="quick" id="quickAmt"></div>
+      </header>
+      <div id="status" class="status" hidden></div>
 
-        <div class="field">
-          <span class="lbl">Người</span>
-          <div class="chips" id="f-nguoi"></div>
-        </div>
-        <div class="field">
-          <span class="lbl">Loại</span>
-          <div class="chips" id="f-loai"></div>
-        </div>
+      <main>
+        <!-- NHẬP -->
+        <section id="tab-nhap" class="tab active">
+          <div id="alerts"></div>
+          <div class="grid-nhap">
+            <form id="form" class="card" autocomplete="off">
+              <input type="hidden" id="f-id">
+              <div class="row">
+                <label>Ngày<input type="date" id="f-ngay" required></label>
+                <label>Số tiền (đ)<input type="text" id="f-tien" class="money" inputmode="numeric" placeholder="0" required></label>
+              </div>
+              <div class="quick" id="quickAmt"></div>
 
-        <label>Khoản chi
-          <input type="text" id="f-ten" list="names" placeholder="VD: Cháo canh, Nhậu, Học phí…" required>
-        </label>
-        <datalist id="names"></datalist>
-        <div class="quick" id="quickNames"></div>
+              <div class="field"><span class="lbl">Người</span><div class="chips" id="f-nguoi"></div></div>
+              <div class="field"><span class="lbl">Loại</span><div class="chips" id="f-loai"></div></div>
 
-        <label>Hạng mục <small id="catHint" class="muted"></small>
-          <select id="f-hangmuc"></select>
-        </label>
-        <label>Ghi chú<input type="text" id="f-ghichu" placeholder="(không bắt buộc)"></label>
+              <label>Khoản chi
+                <input type="text" id="f-ten" list="names" placeholder="VD: Cháo canh, Nhậu, Học phí…" required>
+              </label>
+              <datalist id="names"></datalist>
+              <div class="quick names" id="quickNames"></div>
 
-        <div class="actions">
-          <button type="submit" class="primary" id="saveBtn">Lưu khoản chi</button>
-          <button type="button" id="cancelEdit" hidden>Hủy sửa</button>
-          <button type="button" id="deleteBtn" class="danger" hidden>Xóa</button>
-        </div>
-      </form>
+              <label>Hạng mục <small id="catHint" class="muted"></small>
+                <select id="f-hangmuc"></select>
+              </label>
+              <label>Ghi chú<input type="text" id="f-ghichu" placeholder="(không bắt buộc)"></label>
 
-      <h2>Hôm nay <span id="todayTotal" class="amount"></span></h2>
-      <ul id="todayList" class="list"></ul>
-    </section>
+              <div class="actions">
+                <button type="submit" class="btn primary" id="saveBtn">Lưu khoản chi</button>
+                <button type="button" class="btn" id="cancelEdit" hidden>Hủy sửa</button>
+                <button type="button" class="btn danger" id="deleteBtn" hidden>Xóa</button>
+              </div>
+            </form>
 
-    <!-- DANH SÁCH -->
-    <section id="tab-ds" class="tab">
-      <div class="filters">
-        <select id="ds-thang"></select>
-        <select id="ds-nguoi"><option value="">Tất cả người</option></select>
-        <select id="ds-hangmuc"><option value="">Tất cả hạng mục</option></select>
-        <input type="search" id="ds-tim" placeholder="Tìm khoản chi">
-      </div>
-      <div class="sum-line">Tổng: <b id="ds-tong"></b> · <span id="ds-dem"></span> khoản</div>
-      <ul id="dsList" class="list"></ul>
-    </section>
+            <div class="card today">
+              <div class="card-h"><h2>Trong ngày</h2><span id="todayTotal" class="pill"></span></div>
+              <ul id="todayList" class="rec-list"></ul>
+            </div>
+          </div>
+        </section>
 
-    <!-- TỔNG HỢP -->
-    <section id="tab-th" class="tab">
-      <div class="filters">
-        <select id="th-nam"></select>
-        <select id="th-thang"></select>
-        <select id="th-nguoi"><option value="">Cả nhà</option></select>
-      </div>
-      <div class="cards">
-        <div class="card"><span>Tổng chi</span><b id="th-tong"></b></div>
-        <div class="card"><span id="th-bq-lbl">Bình quân</span><b id="th-bq"></b></div>
-        <div class="card"><span>Số khoản</span><b id="th-dem"></b></div>
-      </div>
-      <div class="cards" id="th-no"></div>
-      <h2>Theo hạng mục</h2>
-      <div id="th-hangmuc" class="bars"></div>
-      <h2>Theo người</h2>
-      <div id="th-nguoi-bars" class="bars"></div>
-      <h2 id="th-thang-title">Theo tháng</h2>
-      <div id="th-thang-bars" class="bars"></div>
-      <h2>Khoản chi lớn nhất</h2>
-      <ul id="th-top" class="list"></ul>
-      <h2>So sánh các năm</h2>
-      <div class="filters one"><select id="cmp-hm"><option value="">Tất cả hạng mục</option></select></div>
-      <p class="muted">Theo bộ lọc "người" ở trên. Ô tô màu: cao hơn cùng kỳ năm trước.</p>
-      <div class="tablewrap"><table id="cmp-table" class="tbl"></table></div>
-    </section>
+        <!-- DANH SÁCH -->
+        <section id="tab-ds" class="tab">
+          <div class="toolbar card">
+            <select id="ds-thang"></select>
+            <select id="ds-hangmuc"><option value="">Tất cả hạng mục</option></select>
+            <label class="search"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="ds-tim" placeholder="Tìm khoản chi"></label>
+            <div class="seg-toggle" id="ds-view">
+              <button data-view="nguoi" class="on">Theo người</button>
+              <button data-view="ngay">Theo ngày</button>
+            </div>
+          </div>
+          <div class="people-cards" id="ds-people"></div>
+          <div class="sum-line">Đang xem: <b id="ds-tong"></b> · <span id="ds-dem"></span> khoản <button class="link" id="ds-clear" hidden>bỏ lọc người</button></div>
+          <div id="dsList"></div>
+        </section>
 
-    <!-- KHOẢN VAY -->
-    <section id="tab-vay" class="tab">
-      <div id="loanCards"></div>
-      <div class="actions"><button id="loanAdd">＋ Thêm khoản vay</button></div>
-      <div id="loanEditor" class="editor" hidden></div>
-    </section>
+        <!-- TỔNG HỢP -->
+        <section id="tab-th" class="tab">
+          <div class="toolbar card">
+            <select id="th-nam"></select>
+            <select id="th-thang"></select>
+            <select id="th-nguoi"><option value="">Cả nhà</option></select>
+          </div>
+          <div class="kpis" id="th-kpis"></div>
 
-    <!-- CÀI ĐẶT -->
-    <section id="tab-cd" class="tab">
-      <h2>Kết nối Google Sheet</h2>
-      <label>Địa chỉ Web App (Apps Script)
-        <input type="url" id="cfg-url" placeholder="https://script.google.com/macros/s/…/exec">
-      </label>
-      <label>Mã bí mật (SECRET)
-        <input type="password" id="cfg-key">
-      </label>
-      <div class="actions">
-        <button class="primary" id="cfg-save">Lưu &amp; kiểm tra</button>
-      </div>
-      <p class="muted" id="cfg-info"></p>
+          <div class="grid2">
+            <div class="card"><div class="card-h"><h2>Theo hạng mục</h2></div><div id="th-donut" class="donut-wrap"></div><div id="th-hangmuc" class="bars"></div></div>
+            <div class="card">
+              <div class="card-h"><h2>Theo người</h2></div><div id="th-nguoi-bars" class="bars"></div>
+              <div class="card-h sp"><h2 id="th-thang-title">Theo tháng</h2></div><div id="th-thang-bars" class="vbars"></div>
+            </div>
+          </div>
 
-      <h2>Nạp dữ liệu ban đầu</h2>
-      <p class="muted">Chọn file <b>seed-2024-2026.json</b> (không đưa file này lên GitHub). Nạp lại nhiều lần cũng không bị trùng.</p>
-      <input type="file" id="seedFile" accept=".json,application/json">
-      <div class="progress" id="seedProg" hidden><div></div></div>
+          <div class="card"><div class="card-h"><h2>Khoản chi lớn nhất</h2></div><ul id="th-top" class="rec-list"></ul></div>
 
-      <h2>Ngân sách tháng theo hạng mục</h2>
-      <p class="muted">Để trống nếu không đặt. Khi chi tới 90% sẽ có cảnh báo trên trang và qua Telegram.</p>
-      <div id="budgetForm" class="budget"></div>
-      <div class="actions"><button class="primary" id="budgetSave">Lưu ngân sách</button></div>
+          <div id="th-debt"></div>
 
-      <h2>Telegram</h2>
-      <p class="muted">Nhắc đến hạn trả nợ lúc 7 giờ sáng, cảnh báo ngân sách, tổng kết tháng vào ngày 1. Cài token và chat id trong Apps Script (xem README).</p>
-      <div class="actions"><button id="tgTest">Gửi tin nhắn thử</button></div>
+          <div class="card">
+            <div class="card-h"><h2>So sánh các năm</h2><select id="cmp-hm" class="slim"><option value="">Tất cả hạng mục</option></select></div>
+            <p class="muted">Theo bộ lọc "người" ở trên. Ô đỏ: cao hơn cùng kỳ năm trước, ô xanh: thấp hơn.</p>
+            <div class="tablewrap"><table id="cmp-table" class="tbl"></table></div>
+          </div>
+        </section>
 
-      <h2>Khác</h2>
-      <div class="actions">
-        <button id="exportBtn">Xuất CSV</button>
-        <button id="reloadBtn">Tải lại toàn bộ từ Sheet</button>
-      </div>
-      <p class="muted">Khoản chưa gửi được: <b id="pendingCount">0</b></p>
-    </section>
-  </main>
+        <!-- KHOẢN VAY -->
+        <section id="tab-vay" class="tab">
+          <div id="loanCards"></div>
+          <div class="actions pad"><button class="btn" id="loanAdd"><svg class="ic"><use href="#i-plus"/></svg>Thêm khoản vay</button></div>
+          <div id="loanEditor" class="editor card" hidden></div>
+        </section>
 
-  <nav class="tabbar">
-    <button data-tab="tab-nhap" class="active">＋<span>Nhập</span></button>
-    <button data-tab="tab-ds">☰<span>Danh sách</span></button>
-    <button data-tab="tab-th">▤<span>Tổng hợp</span></button>
-    <button data-tab="tab-vay">🏦<span>Khoản vay</span></button>
-    <button data-tab="tab-cd">⚙<span>Cài đặt</span></button>
-  </nav>
+        <!-- CÀI ĐẶT -->
+        <section id="tab-cd" class="tab">
+          <div class="grid2">
+            <div class="card">
+              <div class="card-h"><h2>Kết nối Google Sheet</h2></div>
+              <label>Địa chỉ Web App (Apps Script)
+                <input type="url" id="cfg-url" placeholder="https://script.google.com/macros/s/…/exec">
+              </label>
+              <label>Mã bí mật (SECRET)
+                <input type="password" id="cfg-key">
+              </label>
+              <div class="actions"><button class="btn primary" id="cfg-save">Lưu &amp; kiểm tra</button></div>
+              <p class="muted" id="cfg-info"></p>
+            </div>
+            <div class="card">
+              <div class="card-h"><h2>Nạp dữ liệu ban đầu</h2></div>
+              <p class="muted">Chọn file <b>seed-2024-2026.json</b> (không đưa file này lên GitHub). Nạp lại nhiều lần cũng không bị trùng.</p>
+              <input type="file" id="seedFile" accept=".json,application/json">
+              <div class="progress" id="seedProg" hidden><div></div></div>
+              <div class="card-h sp"><h2>Telegram</h2></div>
+              <p class="muted">Nhắc đến hạn trả nợ lúc 7 giờ sáng, cảnh báo ngân sách, tổng kết tháng vào ngày 1.</p>
+              <div class="actions"><button class="btn" id="tgTest"><svg class="ic"><use href="#i-bell"/></svg>Gửi tin nhắn thử</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>Ngân sách tháng theo hạng mục</h2></div>
+            <p class="muted">Để trống nếu không đặt. Khi chi tới 90% sẽ có cảnh báo trên trang và qua Telegram.</p>
+            <div id="budgetForm" class="budget"></div>
+            <div class="actions"><button class="btn primary" id="budgetSave">Lưu ngân sách</button></div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>Khác</h2></div>
+            <div class="actions">
+              <button class="btn" id="exportBtn">Xuất CSV</button>
+              <button class="btn" id="reloadBtn">Tải lại toàn bộ từ Sheet</button>
+            </div>
+            <p class="muted">Khoản chưa gửi được: <b id="pendingCount">0</b></p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
 
   <script src="classifier.js"></script>
   <script src="loan-engine.js"></script>
