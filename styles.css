@@ -368,3 +368,17 @@ input[type=date], input[type=month] { -webkit-appearance: none; appearance: none
 input[type=date]::-webkit-date-and-time-value, input[type=month]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 input[type=date]::-webkit-calendar-picker-indicator { margin-left: 4px; }
 @media (max-width: 640px) { .row input { height: 44px; } .row input[type=date] { padding-left: 10px; padding-right: 8px; } }
+/* v3.5: ô chọn hạng mục */
+.combo-head { display: none; }
+.combo-bg { position: fixed; inset: 0; z-index: 65; background: rgba(5, 8, 20, .45); backdrop-filter: blur(2px); }
+.combo-pop.right { left: auto; right: 0; }
+body.combo-lock { overflow: hidden; }
+@media (max-width: 640px) {
+  .combo-pop { position: fixed; z-index: 70; left: 0; right: 0; top: auto; bottom: 0; min-width: 0; border-radius: 18px 18px 0 0; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(0, 0, 0, .35); animation: sheetUp .2s ease; }
+  .combo-pop.right { left: 0; right: 0; }
+  .combo-head { display: flex; align-items: center; justify-content: space-between; font-weight: 650; font-size: 15px; padding: 2px 4px 10px; }
+  .combo-x { border: 0; background: var(--bg2); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: var(--tx2); }
+  .combo-pop ul { max-height: 52vh; max-height: 45dvh; }
+  .combo-pop li { padding: 11px 10px; font-size: 15px; }
+}
+@keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }

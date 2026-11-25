@@ -778,7 +778,10 @@ function comboSelect(sel) {
   const wrap = document.createElement('div'); wrap.className = 'combo';
   sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel); sel.classList.add('combo-src');
   wrap.insertAdjacentHTML('beforeend', `<button type="button" class="combo-btn"><span></span><svg class="ic"><use href="#i-down"/></svg></button>
-    <div class="combo-pop" hidden><label class="search"><svg class="ic"><use href="#i-search"/></svg><input type="search" placeholder="Tìm hạng mục…" autocomplete="off"></label><ul></ul></div>`);
+    <div class="combo-bg" hidden></div><div class="combo-pop" hidden><div class="combo-head">Chọn hạng mục<button type="button" class="combo-x" aria-label="Đóng"><svg class="ic"><use href="#i-x"/></svg></button></div><label class="search"><svg class="ic"><use href="#i-search"/></svg><input type="search" placeholder="Tìm hạng mục…" autocomplete="off"></label><ul></ul></div>`);
+  const bg = wrap.querySelector('.combo-bg'); bg.onclick = () => close(); wrap.querySelector('.combo-x').onclick = () => close();
+  const sheet = () => matchMedia('(max-width: 640px)').matches;          // điện thoại: khung trượt từ dưới lên
+  const touch = matchMedia('(pointer: coarse)').matches;                  // màn cảm ứng: không tự bật bàn phím
   const btn = wrap.querySelector('.combo-btn'), pop = wrap.querySelector('.combo-pop'), q = pop.querySelector('input'), ul = pop.querySelector('ul');
   const refresh = () => { const o = sel.options[sel.selectedIndex]; btn.firstElementChild.textContent = o ? o.text : ''; };
   const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
@@ -789,10 +792,16 @@ function comboSelect(sel) {
     hi = Math.min(hi, Math.max(0, opts.length - 1));
     ul.innerHTML = opts.map((o, i) => `<li data-v="${esc(o.value)}" class="${o.value === sel.value ? 'sel' : ''}${i === hi ? ' hi' : ''}">${o.value && CATS.includes(o.value) ? `<i style="--cc:${catCol(o.value)}"></i>` : ''}${esc(o.text)}</li>`).join('') || '<li class="none">Không có hạng mục phù hợp</li>';
   };
-  const close = () => { pop.hidden = true; wrap.classList.remove('open'); };
+  const close = () => { if (pop.hidden) return; pop.hidden = true; bg.hidden = true; wrap.classList.remove('open'); document.body.classList.remove('combo-lock'); };
   const pick = v => { if (v == null) return; sel.value = v; sel.dispatchEvent(new Event('change', { bubbles: true })); close(); };
   btn.onclick = () => { if (!pop.hidden) return close(); document.querySelectorAll('.combo.open').forEach(w => w !== wrap && w.querySelector('.combo-btn').click());
-    pop.hidden = false; wrap.classList.add('open'); q.value = ''; hi = Math.max(0, sel.selectedIndex); list(); q.focus({ preventScroll: true }); const s2 = ul.querySelector('.sel'); if (s2) s2.scrollIntoView({ block: 'nearest' }); };
+    pop.hidden = false; wrap.classList.add('open'); q.value = ''; hi = Math.max(0, sel.selectedIndex); list();
+    pop.classList.remove('right');
+    if (sheet()) { bg.hidden = false; document.body.classList.add('combo-lock'); }
+    else if (pop.getBoundingClientRect().right > document.documentElement.clientWidth - 8) pop.classList.add('right');   // không tràn mép phải
+    if (!touch) q.focus({ preventScroll: true });
+    const s2 = ul.querySelector('.sel'); if (s2) ul.scrollTop = s2.offsetTop - ul.clientHeight / 2;   // cuộn trong danh sách, không kéo cả trang
+  };
   q.oninput = () => { hi = 0; list(); };
   q.onkeydown = e => {
     const n = ul.querySelectorAll('li[data-v]').length;
