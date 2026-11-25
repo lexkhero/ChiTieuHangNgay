@@ -339,8 +339,15 @@ function renderSummary() {
   let k = kpi('Tổng chi tiêu', fmt(total) + ' đ', 'var(--ac)', fmt(rs.length) + ' khoản') + kpi(avgLbl, fmt(avg) + ' đ', 'var(--ok)', '');
   const loans = conf().loans || [];
   if (loans.length && !p) {
-    const d = debtTotals(loans, y, m);
-    k += kpi('Trả nợ gốc', fmt(d.goc) + ' đ', '#fb923c', 'chi tiết ở tab Khoản vay') + kpi('Trả nợ lãi', fmt(d.lai) + ' đ', 'var(--bad)', 'xe + nhà') + kpi('Chi tiêu + trả nợ', fmt(total + d.goc + d.lai) + ' đ', '#a78bfa', '');
+    const gs = debtByGroup(loans, y, m), cols = ['#fb923c', '#22d3ee', '#f472b6', '#84cc16'];
+    let tg = 0, tl = 0, tdn = 0;
+    gs.forEach((g, j) => {
+      tg += g.goc; tl += g.lai; tdn += g.duNo;
+      k += kpi('Trả nợ ' + g.short, fmt(g.goc + g.lai) + ' đ', cols[j % cols.length], `gốc ${fmt(g.goc)} · lãi ${fmt(g.lai)}`);
+    });
+    k += kpi('Tổng trả nợ', fmt(tg + tl) + ' đ', 'var(--bad)', `gốc ${fmt(tg)} · lãi ${fmt(tl)}`)
+      + kpi('Tổng dư nợ hiện tại', fmt(tdn) + ' đ', '#a78bfa', gs.map(g => `${g.short} ${compact(g.duNo)}`).join(' · '))
+      + kpi('Chi tiêu + trả nợ', fmt(total + tg + tl) + ' đ', 'var(--ac2)', '');
   }
   $('#th-kpis').innerHTML = k;
 
@@ -428,6 +435,19 @@ const openSched = new Set();
 let rateEdit = null;
 
 function loanCtx(l, i, today) { try { return { l, i, s: LoanEngine.schedule(l, today) }; } catch (e) { return { l, i, err: e.message }; } }
+/** Gom theo nhóm khoản vay (các khoản đảo nợ cùng nhóm tính chung): trả gốc, trả lãi trong kỳ đang xem, dư nợ hiện tại */
+function debtByGroup(loans, y, m) {
+  const map = new Map();
+  loans.forEach((l, i) => {
+    const c = loanCtx(l, i, todayStr()); if (!c.s) return;
+    const key = l.nhom || l.id, name = baseName(l.ten);
+    if (!map.has(key)) map.set(key, { key, name, short: /ô tô|oto|\bxe\b/i.test(name) ? 'xe' : /nhà/i.test(name) ? 'nhà' : name, goc: 0, lai: 0, duNo: 0 });
+    const g = map.get(key);
+    g.duNo += c.s.du_no_hien_tai;
+    c.s.rows.forEach(r => { if (r.thang.startsWith(y) && (!m || r.thang === m)) { g.goc += cg(r) + r.tra_truoc; g.lai += r.lai; } });
+  });
+  return [...map.values()];
+}
 function debtTotals(loans, y, m) {
   let goc = 0, lai = 0, duNo = 0;
   loans.forEach((l, i) => {
