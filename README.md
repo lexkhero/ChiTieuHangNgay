@@ -1,3 +1,8 @@
+> **Bản 3.17 – lịch trả nợ ra sheet "Lịch vay (app)":** thêm file `apps-script/LichVay.gs` vào Apps Script (+ → Tập lệnh → tên `LichVay`),
+> dán lại `Code.gs` mới, rồi Triển khai → Quản lý triển khai → bút chì → Phiên bản mới → Triển khai. Sau đó trong Apps Script chọn hàm
+> `veLichVay` → Chạy một lần. Từ đó mỗi lần sửa khoản vay trên app và mỗi sáng 7 giờ, sheet tự vẽ lại. Hai sheet tự lập
+> "Trả nợ ô tô", "Trả nợ nhà" không bị đụng tới.
+
 > **Bản 3.16 – tự ghi vào sổ tháng. CẦN CẬP NHẬT APPS SCRIPT (làm 1 lần):**
 > 1. Mở Google Sheet "Tính tiền hàng tháng" → **Tiện ích mở rộng → Apps Script**.
 > 2. Bấm **+ → Tập lệnh**, đặt tên `SoThang`, dán toàn bộ nội dung file `apps-script/SoThang.gs`.
@@ -33,6 +38,7 @@ E:\ChiTieuHangNgay\
     Code.gs          -> dán vào Apps Script (backend)
     LoanEngine.gs    -> dán vào Apps Script (bộ tính lãi vay)
     SoThang.gs       -> dán vào Apps Script (ghi khoản chi vào sheet tháng)
+    LichVay.gs       -> dán vào Apps Script (vẽ lịch trả nợ ra sheet "Lịch vay (app)")
   icons\             -> biểu tượng trang
   app.js, classifier.js, loan-engine.js, index.html, styles.css, sw.js, manifest.json, README.md
 ```

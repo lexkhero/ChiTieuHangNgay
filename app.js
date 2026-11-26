@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.16';
+const APP_VERSION = '3.17';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -113,7 +113,10 @@ async function flushPending() {
     else if (p.op === 'map') maps.push(p.item);
     else if (p.op === 'config') confs[p.name] = p.value;
   }
-  for (const [name, value] of Object.entries(confs)) { await apiPost({ action: 'setConfig', name, value }); state.config[name] = value; }
+  for (const [name, value] of Object.entries(confs)) {
+    const j = await apiPost({ action: 'setConfig', name, value }); state.config[name] = value;
+    if (j.lichVayLoi) setTimeout(() => toast('Chưa vẽ được sheet Lịch vay (app): ' + j.lichVayLoi, 'err'), 1600);
+  }
   save(LS.conf, state.config);
   const lastUp = new Map(ups.map(r => [r.id, r]));
   const loiSo = [];

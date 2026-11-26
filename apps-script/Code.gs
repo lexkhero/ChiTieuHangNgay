@@ -10,7 +10,8 @@
  *   TELEGRAM_TOKEN    : token bot Telegram (không bắt buộc, để nhận nhắc nợ)
  *   TELEGRAM_CHAT_ID  : chat id nhận tin nhắn
  *
- * Cần thêm file LoanEngine.gs (cùng nội dung loan-engine.js) và SoThang.gs (ghi vào sổ tháng) vào dự án.
+ * Cần thêm các file LoanEngine.gs (cùng nội dung loan-engine.js), SoThang.gs (ghi vào sổ tháng)
+ * và LichVay.gs (vẽ lịch trả nợ ra sheet "Lịch vay (app)") vào dự án.
  */
 
 const SHEET_DATA = 'ChiTieuApp';
@@ -114,7 +115,10 @@ function doPost(e) {
     }
     else if (body.action === 'ghiBu') res.soThang = ghiBu_(body.thang || '', !!body.chiDem);
     else if (body.action === 'setMap') res.mapped = upsert_(SHEET_MAP, MAP_COLS, body.items || [], 'ten');
-    else if (body.action === 'setConfig') res.saved = upsert_(SHEET_CFG, CFG_COLS, [{ key: body.name, value: JSON.stringify(body.value) }], 'key');
+    else if (body.action === 'setConfig') {
+      res.saved = upsert_(SHEET_CFG, CFG_COLS, [{ key: body.name, value: JSON.stringify(body.value) }], 'key');
+      if (body.name === 'loans') { try { veLichVay_(); } catch (err) { res.lichVayLoi = err.message; } }
+    }
     else return json_({ ok: false, error: 'Action không hợp lệ' });
     return json_(Object.assign({ ok: true }, res));
   } finally {
@@ -188,6 +192,7 @@ function nhacHangNgay() {
   const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
   const cfg = readConfig_();
   const lines = [];
+  try { veLichVay_(cfg); } catch (e) { Logger.log('Vẽ lịch vay lỗi: ' + e.message); }   // cập nhật trạng thái Đã trả / Kỳ tới
 
   // 1) Khoản vay sắp đến hạn
   (cfg.loans || []).forEach(l => {
