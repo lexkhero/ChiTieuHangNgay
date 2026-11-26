@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.15';
+const APP_VERSION = '3.16';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -116,8 +116,10 @@ async function flushPending() {
   for (const [name, value] of Object.entries(confs)) { await apiPost({ action: 'setConfig', name, value }); state.config[name] = value; }
   save(LS.conf, state.config);
   const lastUp = new Map(ups.map(r => [r.id, r]));
-  if (lastUp.size) await apiPost({ action: 'upsert', records: [...lastUp.values()] });
-  if (dels.length) await apiPost({ action: 'delete', ids: dels });
+  const loiSo = [];
+  if (lastUp.size) { const j = await apiPost({ action: 'upsert', records: [...lastUp.values()] }); if (j.soThang) loiSo.push(...j.soThang.loi); }
+  if (dels.length) { const j = await apiPost({ action: 'delete', ids: dels }); if (j.soThang) loiSo.push(...j.soThang.loi); }
+  if (loiSo.length) setTimeout(() => toast('Sổ tháng: ' + loiSo.join('; '), 'err'), 1600);
   if (maps.length) await apiPost({ action: 'setMap', items: maps });
   // ghi nhận vào bản sao server rồi xóa hàng đợi
   const byId = new Map(state.server.map(r => [r.id, r]));
@@ -130,6 +132,28 @@ function queue(op) {
   state.pending.push(op); save(LS.pend, state.pending);
   renderAll();
   sync(true);
+}
+
+/** ghi bù các khoản đã nhập từ app nhưng chưa có trên sổ tháng */
+async function ghiBu() {
+  const info = $('#ghiBuInfo'), b = $('#ghiBuBtn');
+  if (!state.cfg.url) { toast('Cấu hình Google Sheet trước', 'err'); return; }
+  b.disabled = true; info.className = 'muted'; info.textContent = 'Đang kiểm tra…';
+  try {
+    await sync(true, true);
+    const d = (await apiPost({ action: 'ghiBu', chiDem: true })).soThang;
+    if (!d.can) { info.textContent = '✓ Mọi khoản nhập từ app đều đã có trên sổ.'; return; }
+    const th = d.thang.map(t => t.slice(5) + '/' + t.slice(0, 4)).join(', ');
+    if (!confirm(`Có ${d.can} khoản nhập từ app chưa có trên sổ (tháng ${th}).\nNếu bạn đã tự gõ các khoản này vào sổ thì bấm Hủy để tránh bị trùng.\n\nGhi vào sổ?`)) { info.textContent = ''; return; }
+    info.textContent = 'Đang ghi ' + d.can + ' khoản…';
+    const k = (await apiPost({ action: 'ghiBu' })).soThang;
+    info.className = k.loi.length ? 'muted err-text' : 'muted ok-text';
+    info.textContent = `✓ Đã ghi ${k.ghi} khoản vào sổ.` + (k.loi.length ? ' Lỗi: ' + k.loi.join('; ') : '');
+    sync(true, true);
+  } catch (e) {
+    info.className = 'muted err-text';
+    info.textContent = /Action không hợp lệ/.test(e.message) ? 'Apps Script chưa cập nhật: thêm file SoThang.gs, sửa Code.gs rồi triển khai lại (xem hướng dẫn).' : 'Lỗi: ' + e.message;
+  } finally { b.disabled = false; }
 }
 
 /* ---------- thông báo ---------- */
@@ -150,7 +174,12 @@ function setPerson(p) {
   else if (state.form.loai === 'Chung') state.form.loai = 'Phát sinh';
   renderFormChips(); autoCategory(); renderQuickNames();
 }
-function setKind(k) { state.form.loai = k; if (k === 'Chung') state.form.nguoi = 'Chung'; renderFormChips(); autoCategory(); }
+function setKind(k) {
+  const was = state.form.loai; state.form.loai = k;
+  if (k === 'Chung') state.form.nguoi = 'Chung';
+  else if (state.form.nguoi === 'Chung') state.form.nguoi = people().includes(state.last.nguoi) && state.last.nguoi !== 'Chung' ? state.last.nguoi : people()[0];
+  renderFormChips(); autoCategory(); if (was !== k) renderQuickNames();
+}
 function renderFormChips() {
   chips($('#f-nguoi'), people(), state.form.nguoi, setPerson);
   chips($('#f-loai'), KINDS, state.form.loai, setKind);
@@ -167,11 +196,15 @@ function autoCategory() {
   if (!state.form.catTouched) $('#f-hangmuc').value = c;
   $('#catHint').textContent = name ? (state.form.catTouched && $('#f-hangmuc').value !== c ? '(đã chọn tay, gợi ý: ' + c + ')' : '(tự động)') : '';
 }
+/** gợi ý sẵn cho khoản Chung (giống các dòng có sẵn trên sổ tháng) */
+const CHUNG_GOI_Y = ['Tiền điện', 'Tiền nước', 'Đi chợ', 'Tiền điện thoại', 'Tiền mạng', 'Tiền spotify', 'Tiền gas', 'Tiền rác', 'Gửi xe', 'Siêu thị'];
 function renderQuickNames() {
-  const p = state.form.nguoi;
+  const p = state.form.nguoi, chung = p === 'Chung' || state.form.loai === 'Chung';
   const cnt = new Map();
-  for (const r of records()) if (r.nguoi === p) cnt.set(r.ten, (cnt.get(r.ten) || 0) + 1);
-  const top = [...cnt.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => x[0]);
+  for (const r of records()) if (chung ? r.nguoi === 'Chung' || r.loai === 'Chung' : r.nguoi === p) cnt.set(r.ten, (cnt.get(r.ten) || 0) + 1);
+  let top = [...cnt.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]);
+  if (chung) { const f = new Set(CHUNG_GOI_Y.map(fold)); top = CHUNG_GOI_Y.concat(top.filter(n => n && !f.has(fold(n)))).slice(0, 12); }
+  else top = top.slice(0, 8);
   $('#quickNames').innerHTML = top.map(n => `<button type="button" data-n="${esc(n)}">${esc(n)}</button>`).join('');
 }
 function lastAmountFor(name, person) {
@@ -194,7 +227,7 @@ function editRecord(id) {
   state.form.from = from === 'tab-nhap' ? '' : from; state.form.fromY = window.scrollY;
   showTab('tab-nhap'); vClear($('#form'));
   $('#f-id').value = r.id; $('#f-ngay').value = r.ngay || (r.thang + '-01'); $('#f-tien').value = fmt(r.tien);
-  $('#f-ten').value = r.ten; $('#f-ghichu').value = r.ghichu || '';
+  $('#f-ten').value = r.ten; $('#f-ghichu').value = isSheetRef(r.ghichu) ? '' : r.ghichu || '';
   state.form.nguoi = r.nguoi; state.form.loai = r.loai; state.form.catTouched = true; state.form.catUser = false;
   renderFormChips(); $('#f-hangmuc').value = r.hangmuc; autoCategory();
   $('#saveBtn').textContent = 'Cập nhật'; $('#cancelEdit').hidden = false; $('#deleteBtn').hidden = false;
@@ -226,7 +259,7 @@ function onSubmit(e) {
   const hangmuc = $('#f-hangmuc').value;
   const rec = { id, ngay: old && !old.ngay && ngay === old.thang + '-01' ? '' : ngay,
     thang: ngay.slice(0, 7), nguoi: state.form.nguoi, loai: state.form.loai, ten, tien, hangmuc,
-    ghichu: $('#f-ghichu').value.trim(), nguon: old ? old.nguon : 'app' };
+    ghichu: $('#f-ghichu').value.trim() || (old && isSheetRef(old.ghichu) ? old.ghichu : ''), nguon: old ? old.nguon : 'app' };
   // Chọn tay hạng mục khác gợi ý -> ghi nhớ cho tên này (trừ quy tắc cháo của Putin/Út)
   const auto = classify(ten, rec.nguoi, state.userMap);
   if (state.form.catUser && hangmuc !== auto && !(['Putin', 'Út'].includes(rec.nguoi) && normName(ten).startsWith('cháo'))) {
@@ -500,7 +533,7 @@ async function importSeed(file) {
   try {
     for (const [name, value] of Object.entries(data.config || {})) await apiPost({ action: 'setConfig', name, value });
     for (let i = 0; i < maps.length; i += B) { await apiPost({ action: 'setMap', items: maps.slice(i, i + B) }); bar.style.width = (++done / steps * 100) + '%'; }
-    for (let i = 0; i < recs.length; i += B) { await apiPost({ action: 'upsert', records: recs.slice(i, i + B) }); bar.style.width = (++done / steps * 100) + '%'; }
+    for (let i = 0; i < recs.length; i += B) { await apiPost({ action: 'upsert', records: recs.slice(i, i + B), noBook: true }); bar.style.width = (++done / steps * 100) + '%'; }
     const msg = 'Đã nạp ' + fmt(recs.length) + ' khoản và ' + fmt(maps.length) + ' tên phân loại lúc ' + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + '.';
     toast(msg, 'ok'); info.className = 'muted ok-text'; info.textContent = '✓ ' + msg;
     await sync(true, true);
@@ -1290,7 +1323,7 @@ function renderAll() {
   }
   if (active === 'tab-vay') renderLoans();
   rebuildCatOptions();
-  if (active === 'tab-cd') { renderBudgetForm(); renderCatalog(); }
+  if (active === 'tab-cd') { renderBudgetForm(); renderCatalog(); $('#cfg-ghiso').checked = conf().ghi_so !== false; }
   if (active === 'tab-ds') renderList();
   if (active === 'tab-th') {
     document.querySelectorAll('#th-view button').forEach(x => x.classList.toggle('on', x.dataset.v === thView));
@@ -1430,6 +1463,8 @@ function init() {
   $('#exportBtn').onclick = exportCsv;
   $('#reloadBtn').onclick = () => sync();
   $('#budgetSave').onclick = saveBudgets;
+  $('#cfg-ghiso').onchange = e => { setConf('ghi_so', e.target.checked); toast(e.target.checked ? 'Đã bật tự ghi vào sổ tháng' : 'Đã tắt tự ghi vào sổ tháng', 'ok'); };
+  $('#ghiBuBtn').onclick = ghiBu;
   $('#tgTest').onclick = async () => { try { await apiPost({ action: 'testTelegram' }); toast('Đã gửi tin nhắn thử qua Telegram', 'ok'); } catch (e) { toast(e.message, 'err'); } };
   $('#loanAdd').onclick = () => openLoanEditor(null);
   // ô chọn đồng nhất; × để bỏ chọn

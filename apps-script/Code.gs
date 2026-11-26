@@ -10,13 +10,13 @@
  *   TELEGRAM_TOKEN    : token bot Telegram (không bắt buộc, để nhận nhắc nợ)
  *   TELEGRAM_CHAT_ID  : chat id nhận tin nhắn
  *
- * Cần thêm file LoanEngine.gs (cùng nội dung loan-engine.js) vào dự án.
+ * Cần thêm file LoanEngine.gs (cùng nội dung loan-engine.js) và SoThang.gs (ghi vào sổ tháng) vào dự án.
  */
 
 const SHEET_DATA = 'ChiTieuApp';
 const SHEET_MAP = 'PhanLoaiApp';
 const SHEET_CFG = 'CaiDatApp';
-const COLS = ['id', 'ngay', 'thang', 'nguoi', 'loai', 'ten', 'tien', 'hangmuc', 'ghichu', 'nguon', 'capnhat'];
+const COLS = ['id', 'ngay', 'thang', 'nguoi', 'loai', 'ten', 'tien', 'hangmuc', 'ghichu', 'nguon', 'capnhat', 'vitri'];
 const MAP_COLS = ['ten', 'hangmuc', 'capnhat'];
 const CFG_COLS = ['key', 'value', 'capnhat'];
 const TZ = 'Asia/Ho_Chi_Minh';
@@ -34,6 +34,11 @@ function sheet_(name, cols) {
     sh.getRange(1, 1, sh.getMaxRows(), cols.length).setNumberFormat('@');
     const iTien = cols.indexOf('tien');
     if (iTien >= 0) sh.getRange(1, iTien + 1, sh.getMaxRows(), 1).setNumberFormat('#,##0');
+  } else if (sh.getRange(1, cols.length).getValue() !== cols[cols.length - 1]) {
+    // bản cũ thiếu cột mới (vitri): bổ sung tiêu đề, dữ liệu cũ để trống
+    if (sh.getMaxColumns() < cols.length) sh.insertColumnsAfter(sh.getMaxColumns(), cols.length - sh.getMaxColumns());
+    sh.getRange(1, cols.length).setValue(cols[cols.length - 1]).setFontWeight('bold');
+    sh.getRange(1, cols.length, sh.getMaxRows(), 1).setNumberFormat('@');
   }
   return sh;
 }
@@ -95,8 +100,19 @@ function doPost(e) {
   lock.waitLock(30000);
   try {
     const res = {};
-    if (body.action === 'upsert') res.upserted = upsert_(SHEET_DATA, COLS, body.records || []);
-    else if (body.action === 'delete') res.deleted = remove_(SHEET_DATA, body.ids || []);
+    if (body.action === 'upsert') {
+      const recs = body.records || [], ids = new Set(recs.map(r => String(r.id))), oldMap = {};
+      readAll_(SHEET_DATA, COLS).forEach(r => { if (ids.has(String(r.id))) oldMap[String(r.id)] = r; });
+      if (body.noBook) recs.forEach(r => { const o = oldMap[String(r.id)]; r.vitri = o ? o.vitri || '' : ''; });
+      else res.soThang = dongBoSo_(recs, oldMap, readConfig_());
+      res.upserted = upsert_(SHEET_DATA, COLS, recs);
+    } else if (body.action === 'delete') {
+      const ids = new Set((body.ids || []).map(String));
+      const olds = readAll_(SHEET_DATA, COLS).filter(r => ids.has(String(r.id)));
+      res.soThang = xoaSo_(olds, readConfig_());
+      res.deleted = remove_(SHEET_DATA, body.ids || []);
+    }
+    else if (body.action === 'ghiBu') res.soThang = ghiBu_(body.thang || '', !!body.chiDem);
     else if (body.action === 'setMap') res.mapped = upsert_(SHEET_MAP, MAP_COLS, body.items || [], 'ten');
     else if (body.action === 'setConfig') res.saved = upsert_(SHEET_CFG, CFG_COLS, [{ key: body.name, value: JSON.stringify(body.value) }], 'key');
     else return json_({ ok: false, error: 'Action không hợp lệ' });

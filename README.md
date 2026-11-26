@@ -1,3 +1,14 @@
+> **Bản 3.16 – tự ghi vào sổ tháng. CẦN CẬP NHẬT APPS SCRIPT (làm 1 lần):**
+> 1. Mở Google Sheet "Tính tiền hàng tháng" → **Tiện ích mở rộng → Apps Script**.
+> 2. Bấm **+ → Tập lệnh**, đặt tên `SoThang`, dán toàn bộ nội dung file `apps-script/SoThang.gs`.
+> 3. Mở file `Code.gs`, xóa hết, dán lại toàn bộ nội dung `apps-script/Code.gs` mới. Bấm **Lưu** (biểu tượng đĩa).
+> 4. **Triển khai → Quản lý triển khai** → bấm biểu tượng bút chì ở bản đang dùng → **Phiên bản: Phiên bản mới** → **Triển khai**.
+>    Giữ nguyên URL /exec, không cần nhập lại trong app.
+> 5. Trong app: Cài đặt → "Ghi vào sổ tháng" → bấm **Ghi bù khoản chưa có trên sổ** để đưa các khoản đã nhập trên app trước đó vào sổ.
+> Cách ghi: khoản Chung vào khối Tiêu đề / Thực chi (ô có sẵn như Tiền điện thì điền vào đúng dòng đó), khoản của từng người vào cột
+> Sinh hoạt / Phát sinh của người đó, dòng trống đầu tiên. Tháng chưa có sheet thì tạo từ sheet mẫu "Tháng 11/2026".
+> Sửa / xóa trên app sẽ sửa / xóa đúng ô đó, trừ khi ô trên sổ đã bị sửa tay (khi đó app báo để bạn tự xử lý).
+
 > **Bản 3.11** (xem số phiên bản ở cuối tab Cài đặt): giao diện viết lại đạt chuẩn tương phản, ô chọn có nút × bỏ chọn,
 > so sánh cùng kỳ trong Tổng hợp, thêm thành viên / hạng mục trong Cài đặt, đồng bộ nhẹ hơn (không tải lại toàn bộ sau mỗi lần lưu).
 > Cập nhật: chỉ cần đẩy code lên GitHub; không phải làm lại Apps Script.
@@ -21,6 +32,7 @@ E:\ChiTieuHangNgay\
   apps-script\
     Code.gs          -> dán vào Apps Script (backend)
     LoanEngine.gs    -> dán vào Apps Script (bộ tính lãi vay)
+    SoThang.gs       -> dán vào Apps Script (ghi khoản chi vào sheet tháng)
   icons\             -> biểu tượng trang
   app.js, classifier.js, loan-engine.js, index.html, styles.css, sw.js, manifest.json, README.md
 ```
