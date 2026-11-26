@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.13';
+const APP_VERSION = '3.14';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -669,14 +669,26 @@ function intErr(t) {
   if (v === '') return t.hasAttribute('data-req') ? 'Không được để trống' : '';
   const n = +v; return n < min || n > max ? `Chỉ nhập số từ ${min} đến ${max}` : '';
 }
-/** khoản có ngày trả cuối tháng được lùi sang đầu tháng sau, ngày trả đầu tháng được trả sớm cuối tháng trước */
+/** ngày trả thật phải nằm trong tháng đã chọn */
 function doiNgayErr(thang, ngay, ngayTra) {
   const m = ngay.slice(0, 7), dd = +ngay.slice(8);
-  if (m === thang) return '';
-  if (ngayTra >= 25 && m === addMonth(thang, 1) && dd <= 10) return '';
-  if (ngayTra <= 5 && m === addMonth(thang, -1) && dd >= 20) return '';
+  if (m === thang && dd >= 1) return '';
   return 'Ngày trả thật phải nằm trong tháng ' + monTxt(thang);
 }
+/** ô chọn ngày trong đúng tháng đã chọn: chỉ liệt kê các ngày của tháng đó nên không thể chọn sang tháng khác */
+const WDL = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+function dayOptsHtml(thang, sel, ngayTra) {
+  if (!V.isMonth(thang)) return '<option value="">← tháng</option>';
+  const [y, mo] = thang.split('-').map(Number), last = new Date(y, mo, 0).getDate(), due = dueOf(thang, ngayTra);
+  if (!sel || sel.slice(0, 7) !== thang) sel = due;
+  let h = '';
+  for (let d = 1; d <= last; d++) {
+    const v = thang + '-' + String(d).padStart(2, '0'), wd = new Date(y, mo - 1, d).getDay();
+    h += `<option value="${v}"${v === sel ? ' selected' : ''}>${String(d).padStart(2, '0')}/${String(mo).padStart(2, '0')} ${WDL[wd]}${v === due ? ' ★' : ''}</option>`;
+  }
+  return h;
+}
+const curNgayTra = () => { const e = $('#le-ngay_tra'); return e && +e.value >= 1 && +e.value <= 31 ? +e.value : 15; };
 /** ngày trả theo lịch của một tháng (chưa tính dời thứ 7, CN) */
 function dueOf(thang, ngayTra) {
   const [y, mo] = thang.split('-').map(Number), last = new Date(y, mo, 0).getDate();
@@ -706,10 +718,12 @@ function onModalInput(e) {
   if (t.matches('[data-money]')) { const d = t.value.replace(/\D/g, '').slice(0, 11); t.value = d ? fmt(+d) : ''; }
   if (t.matches('[data-int]')) t.value = t.value.replace(/\D/g, '').slice(0, t.maxLength > 0 ? t.maxLength : 3);
   // Đổi ngày trả: gõ xong tháng thì điền sẵn ngày trả theo lịch để chỉ cần sửa
-  if (t.matches('fieldset[data-list="doi_ngay"] [data-k="thang"]') && /^\d{2}\/\d{4}$/.test(t.value)) {
-    const th = V.mon(t.value), dIn = t.closest('.lrow').querySelector('[data-k="ngay"]'), nt = $('#le-ngay_tra');
-    if (th !== '!' && dIn && !dIn.value) dIn.value = dueOf(th, nt ? +nt.value : 15);
+  if (t.matches('fieldset[data-list="doi_ngay"] [data-k="thang"]')) {
+    const sel = t.closest('.lrow').querySelector('select[data-dayof]'), th = /^\d{2}\/\d{4}$/.test(t.value) ? V.mon(t.value) : '';
+    if (sel) { const ok = V.isMonth(th); sel.innerHTML = dayOptsHtml(ok ? th : '', sel.value, curNgayTra()); sel.disabled = !ok; }
   }
+  // đổi ngày trả hằng tháng: cập nhật nhãn "(theo lịch)" của các ô đổi ngày chưa chọn khác
+  if (t.id === 'le-ngay_tra') document.querySelectorAll('select[data-dayof]:not(:disabled)').forEach(sel => { sel.innerHTML = dayOptsHtml(sel.value.slice(0, 7), sel.value, curNgayTra()); });
   const w = t.closest('.invalid'); if (w) { w.classList.remove('invalid'); const er = w.querySelector(':scope > .err'); if (er) er.textContent = ''; }
 }
 /** rời ô số nguyên thì kiểm tra ngay, không đợi bấm Lưu */
@@ -900,17 +914,18 @@ const LIST_DEFS = {
     fields: [['ngay', 'date', 'Ngày trả'], ['so_tien', 'money', 'Số tiền'], ['ghi_chu', 'text', 'Ghi chú']] },
   tam_dung_goc: { title: 'Tạm dừng trả gốc', hint: 'Các tháng chỉ trả lãi, không trả gốc (từ tháng … đến tháng …).',
     fields: [['tu_ky', 'month', 'Từ tháng'], ['den_ky', 'month', 'Đến tháng']] },
-  doi_ngay: { title: 'Đổi ngày trả một tháng', hint: 'Khi ngân hàng thu khác ngày thường (lễ, Tết, hệ thống trễ…): gõ tháng, app điền sẵn ngày theo lịch, bạn sửa thành ngày trả thật. Ngày này phải nằm trong tháng đã chọn. Lãi kỳ này và kỳ sau tự tính lại theo số ngày thực tế.',
-    fields: [['thang', 'month', 'Tháng'], ['ngay', 'date', 'Ngày trả thật']] },
+  doi_ngay: { title: 'Đổi ngày trả một tháng', hint: 'Khi ngân hàng thu khác ngày thường (lễ, Tết, hệ thống trễ…): gõ tháng trước, ô bên cạnh chỉ cho chọn các ngày trong đúng tháng đó (★ là ngày theo lịch). Lãi kỳ này và kỳ sau tự tính lại theo số ngày thực tế.',
+    fields: [['thang', 'month', 'Tháng'], ['ngay', 'dayof', 'Ngày trả thật']] },
 };
 function openLoanEditor(idx) {
   const loans = conf().loans || [];
   if (idx != null && loanDone(loanCtx(loans[idx], idx, todayStr()))) { toast('Khoản vay đã tất toán / đảo nợ, chỉ xem, không sửa được', 'err'); return; }
   const l = idx == null ? { id: 'vay-' + Date.now().toString(36), ten: '', kieu: 'tra_gop', so_tien_vay: '', ngay_giai_ngan: todayStr(), so_thang: '', ngay_tra: 15, goc_moi_ky: '', ky_dau: '', lui_ngay_nghi: true, nhac_truoc: 5, lai_suat: [{ tu_ngay: todayStr(), nam: '' }], tra_truoc: [], tam_dung_goc: [], doi_ngay: {} } : JSON.parse(JSON.stringify(loans[idx]));
   const lists = { ...l, doi_ngay: Object.entries(l.doi_ngay || {}).map(([thang, ngay]) => ({ thang, ngay })) };
-  const inp = (k, type, ph, val) => type === 'month' ? monIn(`data-k="${k}" title="${ph}"`, val, 'MM/YYYY') : type === 'money' ? moneyIn(`data-k="${k}" title="${ph}"`, val) : type === 'rate' ? rateIn(`data-k="${k}" title="${ph}"`, val)
+  const inp = (k, type, ph, val, row = {}) => type === 'dayof' ? `<select data-k="${k}" data-dayof title="${ph}"${V.isMonth(row.thang) ? '' : ' disabled'}>${dayOptsHtml(row.thang, val, l.ngay_tra)}</select>`
+    : type === 'month' ? monIn(`data-k="${k}" title="${ph}"`, val, 'MM/YYYY') : type === 'money' ? moneyIn(`data-k="${k}" title="${ph}"`, val) : type === 'rate' ? rateIn(`data-k="${k}" title="${ph}"`, val)
     : `<input data-k="${k}" type="${type}" placeholder="${ph}" title="${ph}"${type === 'text' ? ' maxlength="100"' : ''} value="${esc(val ?? '')}">`;
-  const rowHtml = (def, r) => `<div class="lrow${def.fields.length === 3 ? ' three' : ''}">${def.fields.map(([k, t, ph]) => inp(k, t, ph, r[k])).join('')}<button type="button" data-delrow aria-label="Xóa dòng">✕</button><small class="err"></small></div>`;
+  const rowHtml = (def, r) => `<div class="lrow${def.fields.length === 3 ? ' three' : ''}">${def.fields.map(([k, t, ph]) => inp(k, t, ph, r[k], r)).join('')}<button type="button" data-delrow aria-label="Xóa dòng">✕</button><small class="err"></small></div>`;
   const listHtml = key => {
     const def = LIST_DEFS[key], rows = lists[key] || [];
     return `<fieldset data-list="${key}"><legend>${def.title}</legend><small class="hint">${def.hint}</small>
@@ -982,7 +997,7 @@ function openLoanEditor(idx) {
     if (out.nhom && !/^[a-z0-9_-]+$/i.test(out.nhom)) E.push([g('nhom'), 'Chỉ dùng chữ không dấu, số, gạch ngang (VD: nha)']);
     // các danh sách
     const rowsOf = key => [...ed.querySelectorAll(`fieldset[data-list="${key}"] .lrow`)].map(row => {
-      const o = { _row: row }; row.querySelectorAll('input').forEach(i => { const raw = i.value.trim(); o[i.dataset.k] = i.matches('[data-month]') ? V.mon(raw) : raw; o['_' + i.dataset.k] = i; }); return o;
+      const o = { _row: row }; row.querySelectorAll('input, select').forEach(i => { const raw = i.value.trim(); o[i.dataset.k] = i.matches('[data-month]') ? V.mon(raw) : raw; o['_' + i.dataset.k] = i; }); return o;
     }).filter(o => LIST_DEFS[key].fields.some(([k]) => o[k]));
     const inRange = d => (!okGd || d >= gd) && (!endD || d <= endD);
     const rangeTxt = (okGd ? ' (từ ' + fmtD(gd) : ' (') + (endD ? ' đến ' + fmtD(endD) : '') + ')';
