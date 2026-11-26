@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.12';
+const APP_VERSION = '3.13';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -181,6 +181,7 @@ function lastAmountFor(name, person) {
 function resetForm(keepDate) {
   $('#f-id').value = ''; $('#f-ten').value = ''; $('#f-tien').value = ''; $('#f-ghichu').value = '';
   if (!keepDate) $('#f-ngay').value = todayStr();
+  $('#f-ngay').min = '2020-01-01'; $('#f-ngay').max = addDays(todayStr(), 31);
   state.form.nguoi = people().includes(state.last.nguoi) ? state.last.nguoi : people()[0]; state.form.loai = state.last.loai;
   state.form.catTouched = false; state.form.catUser = false;
   $('#saveBtn').textContent = 'Lưu khoản chi'; $('#cancelEdit').hidden = true; $('#deleteBtn').hidden = true;
@@ -212,12 +213,13 @@ function onSubmit(e) {
   const ngay = $('#f-ngay').value;
   const tien = parseAmount($('#f-tien').value);
   const ten = $('#f-ten').value.trim().replace(/\s+/g, ' ');
-  const E = [], maxDay = new Date(Date.now() + 31 * 864e5).toISOString().slice(0, 10);
-  if (!V.isDate(ngay)) E.push([$('#f-ngay'), 'Chọn ngày chi']);
-  else if (ngay < '2000-01-01' || ngay > maxDay) E.push([$('#f-ngay'), 'Ngày không hợp lệ (không quá 1 tháng sau hôm nay)']);
+  const E = [], maxDay = addDays(todayStr(), 31);
+  E.push([$('#f-ngay'), V.dateErr(ngay, true, '2020-01-01', maxDay, 'Ngày chi')]);
   if (!tien) E.push([$('#f-tien'), 'Nhập số tiền, ví dụ 30 = 30.000 đ']);
-  else if (tien > 2e9) E.push([$('#f-tien'), 'Số tiền quá lớn, kiểm tra lại số 0']);
+  else if (tien > 2e9) E.push([$('#f-tien'), 'Số tiền quá lớn (tối đa 2 tỷ), kiểm tra lại số 0']);
   if (!ten) E.push([$('#f-ten'), 'Nhập tên khoản chi, ví dụ Cháo canh']);
+  else if (!/[\p{L}\d]/u.test(ten)) E.push([$('#f-ten'), 'Tên phải có chữ hoặc số']);
+  if (!$('#f-hangmuc').value || !catsAll().includes($('#f-hangmuc').value)) E.push([$('#f-hangmuc'), 'Chọn hạng mục']);
   if (!state.form.nguoi) E.push([$('#f-nguoi button'), 'Chọn người chi']);
   if (!vShow($('#form'), E)) return;
   if (tien >= 50e6 && !confirm('Số tiền ' + fmt(tien) + ' đ khá lớn. Lưu đúng số này?')) return;
@@ -467,7 +469,14 @@ function renderSummary() {
 
 /* ---------- cài đặt, nạp dữ liệu, xuất CSV ---------- */
 async function saveConfig() {
-  state.cfg = { url: $('#cfg-url').value.trim(), key: $('#cfg-key').value };
+  const ui = $('#cfg-url'), ki = $('#cfg-key'), url = ui.value.trim(), key = ki.value, E = [];
+  if (!url) E.push([ui, 'Dán địa chỉ Web App vào đây']);
+  else if (!/^https:\/\/script\.google\.com\/(a\/[^/]+\/)?macros\/s\/[\w-]{20,}\/exec$/.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1):\d+\/exec$/.test(url))
+    E.push([ui, /\/dev$/.test(url) ? 'Đây là link thử (/dev). Lấy link kết thúc bằng /exec ở Triển khai → Quản lý triển khai' : 'Sai địa chỉ: phải dạng https://script.google.com/macros/s/…/exec']);
+  if (!key) E.push([ki, 'Nhập mã bí mật SECRET']);
+  else if (key !== key.trim()) E.push([ki, 'Có khoảng trắng ở đầu hoặc cuối, xóa đi']);
+  if (!vShow(ui.closest('.card'), E)) return;
+  state.cfg = { url, key };
   save(LS.cfg, state.cfg);
   try { await apiGet({ action: 'ping' }); $('#cfg-info').textContent = 'Kết nối thành công.'; await sync(); }
   catch (e) { $('#cfg-info').textContent = 'Không kết nối được: ' + e.message; }
@@ -475,9 +484,14 @@ async function saveConfig() {
 async function importSeed(file) {
   const info = $('#seedInfo');
   if (!state.cfg.url) { toast('Cấu hình Google Sheet trước', 'err'); return; }
+  if (file.size > 30e6) { info.className = 'muted err-text'; info.textContent = 'File quá lớn (trên 30 MB), kiểm tra lại có đúng file dữ liệu không.'; return; }
   let data;
   try { data = JSON.parse(await file.text()); } catch (e) { info.textContent = 'File không đúng định dạng JSON.'; info.className = 'muted err-text'; return; }
-  if (!Array.isArray(data.records)) { info.textContent = 'File không có danh sách khoản chi (records).'; info.className = 'muted err-text'; return; }
+  if (!data || !Array.isArray(data.records)) { info.textContent = 'File không có danh sách khoản chi (records).'; info.className = 'muted err-text'; return; }
+  const bad = data.records.map((r, i) => [r, i]).filter(([r]) => !r || !r.id || !r.ten || !r.nguoi || !(Number.isFinite(+r.tien) && +r.tien > 0)
+    || !((r.ngay && V.isDate(r.ngay)) || (!r.ngay && V.isMonth(r.thang))));
+  if (bad.length) { info.className = 'muted err-text'; info.textContent = `File có ${fmt(bad.length)} khoản sai dữ liệu (thiếu id/tên/người, số tiền ≤ 0 hoặc ngày sai), ví dụ dòng ${bad.slice(0, 3).map(x => x[1] + 1).join(', ')}. Chưa nạp gì.`; return; }
+  if (data.phanloai && !Array.isArray(data.phanloai)) { info.className = 'muted err-text'; info.textContent = 'Mục phanloai trong file phải là danh sách.'; return; }
   info.className = 'muted'; info.textContent = 'Đang nạp ' + fmt(data.records.length) + ' khoản…';
   const recs = data.records || [], maps = data.phanloai || [];
   const prog = $('#seedProg'); prog.hidden = false; const bar = prog.firstElementChild;
@@ -621,10 +635,21 @@ function onCollClick(e) {
 }
 
 /* ---------- kiểm tra dữ liệu nhập trong popup ---------- */
+/** 'YYYY-MM-DD' chuẩn hóa lại để loại ngày không tồn tại như 31/02 */
+const iso0 = v => { const t = new Date(v + 'T00:00'); return isNaN(t) ? '' : t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+const addDays = (v, n) => { const t = new Date(v + 'T00:00'); t.setDate(t.getDate() + n); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
 const V = {
   money: v => parseInt(String(v || '').replace(/[^\d]/g, ''), 10) || 0,
   num: v => { const t = String(v ?? '').trim().replace(',', '.'); return t === '' || !/^-?\d+(\.\d+)?$/.test(t) ? NaN : +t; },
-  isDate: v => /^\d{4}-\d{2}-\d{2}$/.test(v || '') && !isNaN(new Date(v + 'T00:00')),
+  isDate: v => /^(20\d{2}|2100)-\d{2}-\d{2}$/.test(v || '') && !isNaN(new Date(v + 'T00:00')) && iso0(v) === v,
+  /** kiểm tra ngày: trống / sai / ngoài khoảng [min, max] */
+  dateErr(v, req, min, max, what = 'Ngày') {
+    if (!v) return req ? 'Chọn ' + what.toLowerCase() : '';
+    if (!V.isDate(v)) return what + ' không hợp lệ (năm từ 2000 đến 2100)';
+    if (min && v < min) return 'Không được trước ' + fmtD(min);
+    if (max && v > max) return 'Không được sau ' + fmtD(max);
+    return '';
+  },
   isMonth: v => /^\d{4}-(0[1-9]|1[0-2])$/.test(v || ''),
   /** 'MM/YYYY' -> 'YYYY-MM'; '' nếu trống; '!' nếu sai */
   mon(v) { const t = String(v || '').trim(); if (!t) return ''; const m = /^(\d{1,2})\/(\d{4})$/.exec(t); if (!m) return '!'; const mm = +m[1], yy = +m[2];
@@ -658,7 +683,7 @@ function dueOf(thang, ngayTra) {
   return thang + '-' + String(Math.min(ngayTra || 15, last)).padStart(2, '0');
 }
 const moneyIn = (attrs, val) => `<input type="text" inputmode="numeric" autocomplete="off" data-money ${attrs} value="${val ? fmt(val) : ''}" placeholder="0">`;
-const rateIn = (attrs, val) => `<input type="text" inputmode="decimal" autocomplete="off" ${attrs} value="${esc(String(val ?? '').replace('.', ','))}" placeholder="VD: 9,8">`;
+const rateIn = (attrs, val) => `<input type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-rate ${attrs} value="${esc(String(val ?? '').replace('.', ','))}" placeholder="VD: 9,8">`;
 function vClear(box) { box.querySelectorAll('.invalid').forEach(x => { x.classList.remove('invalid'); const e = x.querySelector(':scope > .err'); if (e) e.textContent = ''; }); }
 /** errs: [[ô input, thông báo]] – đánh dấu ô lỗi, cuộn tới ô đầu tiên; trả về true nếu không có lỗi */
 function vShow(box, errs) {
@@ -677,6 +702,8 @@ function onModalInput(e) {
     if (d.length === 1 && +d > 1) d = '0' + d;
     t.value = d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
   }
+  if (t.matches('[data-rate]')) { let v = t.value.replace('.', ',').replace(/[^\d,]/g, ''); const k = v.indexOf(','); if (k >= 0) v = v.slice(0, k + 1) + v.slice(k + 1).replace(/,/g, '').slice(0, 2); t.value = v; }
+  if (t.matches('[data-money]')) { const d = t.value.replace(/\D/g, '').slice(0, 11); t.value = d ? fmt(+d) : ''; }
   if (t.matches('[data-int]')) t.value = t.value.replace(/\D/g, '').slice(0, t.maxLength > 0 ? t.maxLength : 3);
   // Đổi ngày trả: gõ xong tháng thì điền sẵn ngày trả theo lịch để chỉ cần sửa
   if (t.matches('fieldset[data-list="doi_ngay"] [data-k="thang"]') && /^\d{2}\/\d{4}$/.test(t.value)) {
@@ -687,8 +714,17 @@ function onModalInput(e) {
 }
 /** rời ô số nguyên thì kiểm tra ngay, không đợi bấm Lưu */
 function onModalBlur(e) {
-  const t = e.target; if (!t.matches || !t.matches('[data-int]')) return;
-  const msg = intErr(t), w = t.closest('.fld, .lrow'); if (!w) return;
+  const t = e.target; if (!t.matches || !t.matches('input')) return;
+  let msg;
+  if (t.matches('[data-int]')) msg = intErr(t);
+  else if (t.type === 'date') msg = V.dateErr(t.value, t.hasAttribute('data-req'), t.min, t.max);
+  else if (t.matches('[data-month]')) msg = V.monErr(t.value, t.hasAttribute('data-req'));
+  else if (t.matches('[data-rate]')) msg = t.value || t.hasAttribute('data-req') ? V.rate(t.value) : '';
+  else if (t.matches('[data-money]')) { const n = V.money(t.value), mn = +t.dataset.min || 0, mx = +t.dataset.max || 0;
+    msg = !n ? (t.hasAttribute('data-req') ? 'Nhập số tiền' : '') : mn && n < mn ? 'Tối thiểu ' + fmt(mn) + ' đ' : mx && n > mx ? 'Quá lớn, tối đa ' + fmt(mx) + ' đ' : ''; }
+  else return;
+  const w = t.closest('.fld, .lrow'); if (!w) return;
+  if (!msg && w.querySelectorAll('input').length > 1 && w.classList.contains('lrow')) return; // dòng nhiều ô: để nút Lưu kiểm tra
   w.classList.toggle('invalid', !!msg); const er = w.querySelector(':scope > .err'); if (er) er.textContent = msg;
 }
 const monthOf = d => (d || '').slice(0, 7);
@@ -723,10 +759,10 @@ function rollFormHtml(c) {
   const { l, i, s } = c, cur = currentRate(l, todayStr());
   return `<div class="roll" id="roll-${i}"><p class="muted">Ngân hàng giải ngân khoản mới để trả gốc khoản cũ. Nếu khoản mới giải ngân trước ngày khoản cũ đáo hạn, những ngày chồng nhau sẽ tính lãi cả hai khoản (giống sheet).</p>
     <div class="grid2 f">
-      ${fld('Ngày đáo hạn khoản cũ *', `<input type="date" data-rl="end" value="${esc(l.ngay_ket_thuc || '')}">`, `Ngày ngân hàng thu nốt lãi và tất toán khoản cũ. Phải sau ${fmtD(l.ngay_giai_ngan)}.`)}
-      ${fld('Ngày giải ngân khoản mới *', `<input type="date" data-rl="start">`, 'Bằng hoặc trước ngày đáo hạn khoản cũ.')}
-      ${fld('Số tiền vay mới (đ) *', moneyIn('data-rl="amt"', s.du_no_hien_tai || l.so_tien_vay), `Thường bằng dư nợ khoản cũ: ${fmt(s.du_no_hien_tai || l.so_tien_vay)} đ.`)}
-      ${fld('Lãi suất khoản mới (%/năm) *', rateIn('data-rl="rate"', cur ? cur.nam : ''), 'Lãi suất năm, ví dụ 8,8.')}
+      ${fld('Ngày đáo hạn khoản cũ *', `<input type="date" data-rl="end" data-req min="${addDays(l.ngay_giai_ngan, 1)}" max="${addDays(todayStr(), 366)}" value="${esc(l.ngay_ket_thuc || '')}">`, `Ngày ngân hàng thu nốt lãi và tất toán khoản cũ. Phải sau ${fmtD(l.ngay_giai_ngan)}.`)}
+      ${fld('Ngày giải ngân khoản mới *', `<input type="date" data-rl="start" data-req min="${addDays(l.ngay_giai_ngan, 1)}" max="${addDays(todayStr(), 366)}">`, 'Bằng hoặc trước ngày đáo hạn khoản cũ, sớm hơn tối đa 31 ngày.')}
+      ${fld('Số tiền vay mới (đ) *', moneyIn('data-rl="amt" data-req data-min="1000000" data-max="10000000000"', s.du_no_hien_tai || l.so_tien_vay), `Thường bằng dư nợ khoản cũ: ${fmt(s.du_no_hien_tai || l.so_tien_vay)} đ.`)}
+      ${fld('Lãi suất khoản mới (%/năm) *', rateIn('data-rl="rate" data-req', cur ? cur.nam : ''), 'Lãi suất năm, ví dụ 8,8.')}
       ${fld('Ngày trả hằng tháng *', intIn('data-rl="day" data-req', l.ngay_tra || 15, 1, 31), 'Từ 1 đến 31.')}
       ${fld('Tháng trả kỳ đầu', monIn('data-rl="ky"', ''), 'Dạng MM/YYYY, ví dụ 12/2026. Để trống: tháng liền sau tháng giải ngân.')}
     </div>
@@ -737,16 +773,19 @@ function applyRoll(i, box) {
   const loans = JSON.parse(JSON.stringify(conf().loans || [])), old = loans[i];
   const end = v('end'), start = v('start'), amt = V.money(v('amt')), rate = V.num(v('rate')), day = V.num(v('day'));
   const E = [];
-  if (!V.isDate(end)) E.push([q('end'), 'Chọn ngày đáo hạn']); else if (end <= old.ngay_giai_ngan) E.push([q('end'), 'Phải sau ngày giải ngân khoản cũ (' + fmtD(old.ngay_giai_ngan) + ')']);
-  if (!V.isDate(start)) E.push([q('start'), 'Chọn ngày giải ngân khoản mới']);
-  else if (start <= old.ngay_giai_ngan) E.push([q('start'), 'Phải sau ngày giải ngân khoản cũ']);
-  else if (V.isDate(end) && start > end) E.push([q('start'), 'Không được sau ngày đáo hạn khoản cũ (' + fmtD(end) + ')']);
-  if (!amt) E.push([q('amt'), 'Nhập số tiền vay mới']); else if (amt > 10e9) E.push([q('amt'), 'Số tiền quá lớn, kiểm tra lại số 0']);
+  const maxD = addDays(todayStr(), 366), endE = V.dateErr(end, true, addDays(old.ngay_giai_ngan, 1), maxD, 'Ngày đáo hạn');
+  E.push([q('end'), endE]);
+  const stE = V.dateErr(start, true, addDays(old.ngay_giai_ngan, 1), maxD, 'Ngày giải ngân khoản mới');
+  if (stE) E.push([q('start'), stE]);
+  else if (!endE && start > end) E.push([q('start'), 'Không được sau ngày đáo hạn khoản cũ (' + fmtD(end) + ')']);
+  else if (!endE && start < addDays(end, -31)) E.push([q('start'), 'Sớm hơn ngày đáo hạn quá 31 ngày, kiểm tra lại']);
+  if (!amt) E.push([q('amt'), 'Nhập số tiền vay mới']); else if (amt < 1e6) E.push([q('amt'), 'Tối thiểu 1.000.000 đ']); else if (amt > 10e9) E.push([q('amt'), 'Số tiền quá lớn, kiểm tra lại số 0']);
   E.push([q('rate'), V.rate(v('rate'))]);
   E.push([q('day'), V.day(v('day'))]);
   let ky = V.mon(v('ky'));
   if (ky === '!') E.push([q('ky'), V.monErr(v('ky'))]);
-  else if (ky && V.isDate(start) && ky < monthOf(start)) E.push([q('ky'), 'Không được trước tháng giải ngân (' + monthOf(start).split('-').reverse().join('/') + ')']);
+  else if (ky && !stE && ky < monthOf(start)) E.push([q('ky'), 'Không được trước tháng giải ngân (' + monTxt(monthOf(start)) + ')']);
+  else if (ky && !stE && ky > addMonth(monthOf(start), 12)) E.push([q('ky'), 'Không được quá 12 tháng sau tháng giải ngân']);
   if (!vShow(box, E)) return;
   const nhom = old.nhom || old.id, base = baseName(old.ten);
   if (!ky) ky = addMonth(monthOf(start), 1);
@@ -820,8 +859,8 @@ function openRateModal(i, idx, date) {
   const list = (l.lai_suat || []).slice().sort((a, b) => a.tu_ngay.localeCompare(b.tu_ngay)).map(x => `${fmtD(x.tu_ngay)}: ${pc(x.nam)}`).join(' · ');
   openModal(idx === 'new' ? 'Thêm mốc đổi lãi suất' : 'Sửa mốc lãi suất', `<p class="muted">${esc(l.ten)}<br>Các mốc hiện có: ${list || 'chưa có'}</p>
     <div class="row">
-      ${fld('Áp dụng từ ngày *', `<input type="date" data-rf="date" min="${l.ngay_giai_ngan}"${end ? ` max="${end}"` : ''} value="${esc(r ? r.tu_ngay : date || today)}">`, `Ngày ngân hàng bắt đầu tính lãi mới (xem tin nhắn hoặc app ngân hàng). Từ ${fmtD(l.ngay_giai_ngan)}${end ? ' đến ' + fmtD(end) : ''}.`)}
-      ${fld('Lãi suất (%/năm) *', rateIn('data-rf="rate"', r ? r.nam : cur ? cur.nam : ''), 'Lãi suất năm, ví dụ 9,8. Không gõ dấu %.')}
+      ${fld('Áp dụng từ ngày *', `<input type="date" data-rf="date" data-req min="${l.ngay_giai_ngan}"${end ? ` max="${end}"` : ''} value="${esc(r ? r.tu_ngay : date || today)}">`, `Ngày ngân hàng bắt đầu tính lãi mới (xem tin nhắn hoặc app ngân hàng). Từ ${fmtD(l.ngay_giai_ngan)}${end ? ' đến ' + fmtD(end) : ''}.`)}
+      ${fld('Lãi suất (%/năm) *', rateIn('data-rf="rate" data-req', r ? r.nam : cur ? cur.nam : ''), 'Lãi suất năm, ví dụ 9,8. Không gõ dấu %.')}
     </div>
     <p class="muted">Tiền lãi các kỳ sau ngày này, lịch trả nợ và số liệu tổng hợp sẽ tự tính lại.</p>
     <div class="actions modal-act"><button type="button" class="btn primary" data-rt="save" data-loan="${i}" data-idx="${idx}"><svg class="ic"><use href="#i-check"/></svg>Lưu</button><button type="button" class="btn" data-rt="cancel">Hủy</button></div>`);
@@ -840,7 +879,7 @@ function onRateClick(e) {
   } else if (op === 'save') {
     const box = b.closest('.modal-b'), di = box.querySelector('[data-rf=date]'), ri = box.querySelector('[data-rf=rate]'), date = di.value, nam = V.num(ri.value);
     const l = (conf().loans || [])[i], end = loanEnd(l), E = [];
-    if (!V.isDate(date)) E.push([di, 'Chọn ngày áp dụng']);
+    if (!V.isDate(date)) E.push([di, date ? 'Ngày không hợp lệ' : 'Chọn ngày áp dụng']);
     else if (date < l.ngay_giai_ngan) E.push([di, 'Không được trước ngày giải ngân (' + fmtD(l.ngay_giai_ngan) + ')']);
     else if (end && date > end) E.push([di, 'Không được sau ngày đáo hạn (' + fmtD(end) + ')']);
     else if ((l.lai_suat || []).some((r, k) => r.tu_ngay === date && k !== idx)) E.push([di, 'Đã có mốc ngày ' + fmtD(date) + ', hãy bấm Sửa ở dòng đó']);
@@ -870,7 +909,7 @@ function openLoanEditor(idx) {
   const l = idx == null ? { id: 'vay-' + Date.now().toString(36), ten: '', kieu: 'tra_gop', so_tien_vay: '', ngay_giai_ngan: todayStr(), so_thang: '', ngay_tra: 15, goc_moi_ky: '', ky_dau: '', lui_ngay_nghi: true, nhac_truoc: 5, lai_suat: [{ tu_ngay: todayStr(), nam: '' }], tra_truoc: [], tam_dung_goc: [], doi_ngay: {} } : JSON.parse(JSON.stringify(loans[idx]));
   const lists = { ...l, doi_ngay: Object.entries(l.doi_ngay || {}).map(([thang, ngay]) => ({ thang, ngay })) };
   const inp = (k, type, ph, val) => type === 'month' ? monIn(`data-k="${k}" title="${ph}"`, val, 'MM/YYYY') : type === 'money' ? moneyIn(`data-k="${k}" title="${ph}"`, val) : type === 'rate' ? rateIn(`data-k="${k}" title="${ph}"`, val)
-    : `<input data-k="${k}" type="${type}" placeholder="${ph}" title="${ph}" value="${esc(val ?? '')}">`;
+    : `<input data-k="${k}" type="${type}" placeholder="${ph}" title="${ph}"${type === 'text' ? ' maxlength="100"' : ''} value="${esc(val ?? '')}">`;
   const rowHtml = (def, r) => `<div class="lrow${def.fields.length === 3 ? ' three' : ''}">${def.fields.map(([k, t, ph]) => inp(k, t, ph, r[k])).join('')}<button type="button" data-delrow aria-label="Xóa dòng">✕</button><small class="err"></small></div>`;
   const listHtml = key => {
     const def = LIST_DEFS[key], rows = lists[key] || [];
@@ -884,14 +923,14 @@ function openLoanEditor(idx) {
     ${fld('Tên khoản vay *', ti('ten', 'text', l.ten, 'maxlength="60" placeholder="VD: Vay mua ô tô"'), 'Tên ngắn để nhận ra khoản vay, tối đa 60 ký tự.')}
     <div class="grid2 f">
       ${fld('Cách trả *', `<select id="le-kieu"><option value="tra_gop">Trả góp: gốc đều hằng tháng + lãi</option><option value="tra_lai">Hằng tháng trả lãi, gốc trả cuối kỳ</option></select>`, 'Vay mua xe thường là trả góp; vay thế chấp ngắn hạn thường chỉ trả lãi.')}
-      ${fld('Số tiền vay (đ) *', moneyIn('id="le-so_tien_vay"', l.so_tien_vay), 'Số tiền ngân hàng giải ngân, ví dụ 450.000.000.')}
-      ${fld('Ngày giải ngân *', ti('ngay_giai_ngan', 'date', l.ngay_giai_ngan), 'Ngày bắt đầu tính lãi.')}
-      ${fld('Thời hạn (tháng)', intIn('id="le-so_thang"', l.so_thang, 1, 480, 'VD: 84'), 'Ví dụ 84 tháng = 7 năm. Để trống nếu dùng "Ngày đáo hạn cụ thể" hoặc chưa biết.')}
+      ${fld('Số tiền vay (đ) *', moneyIn('id="le-so_tien_vay" data-req data-min="1000000" data-max="10000000000"', l.so_tien_vay), 'Số tiền ngân hàng giải ngân, ví dụ 450.000.000.')}
+      ${fld('Ngày giải ngân *', ti('ngay_giai_ngan', 'date', l.ngay_giai_ngan, `data-req min="2000-01-01" max="${addDays(todayStr(), 366)}"`), 'Ngày bắt đầu tính lãi, không quá 1 năm sau hôm nay.')}
+      ${fld('Thời hạn (tháng)', intIn('id="le-so_thang"', l.so_thang, 1, 480, 'VD: 84'), 'Ví dụ 84 tháng = 7 năm (tối đa 480). Để trống nếu dùng "Ngày đáo hạn cụ thể" hoặc chưa biết.')}
       ${fld('Ngày trả hằng tháng *', intIn('id="le-ngay_tra" data-req', l.ngay_tra, 1, 31, 'VD: 15'), 'Từ 1 đến 31. Tháng không có ngày đó thì trả ngày cuối tháng.')}
-      ${fld('Gốc mỗi kỳ (đ)', moneyIn('id="le-goc_moi_ky"', l.goc_moi_ky), 'Bắt buộc với trả góp, ví dụ 5.350.000. Bỏ trống nếu chỉ trả lãi.')}
-      ${fld('Tháng trả kỳ đầu', monIn('id="le-ky_dau"', l.ky_dau), 'Dạng MM/YYYY, ví dụ 06/2024. Để trống: tháng liền sau tháng giải ngân.')}
+      ${fld('Gốc mỗi kỳ (đ)', moneyIn('id="le-goc_moi_ky" data-min="10000"', l.goc_moi_ky), 'Bắt buộc với trả góp, ví dụ 5.350.000. Bỏ trống nếu chỉ trả lãi.')}
+      ${fld('Tháng trả kỳ đầu', monIn('id="le-ky_dau"', l.ky_dau), 'Dạng MM/YYYY, ví dụ 06/2024. Từ tháng giải ngân đến 12 tháng sau. Để trống: tháng liền sau tháng giải ngân.')}
       ${fld('Nhắc trước (ngày)', intIn('id="le-nhac_truoc"', l.nhac_truoc, 0, 30, '5'), 'Cảnh báo trên trang và Telegram trước hạn bao nhiêu ngày (0–30).')}
-      ${fld('Ngày đáo hạn cụ thể', ti('ngay_ket_thuc', 'date', l.ngay_ket_thuc), 'Nếu ngân hàng ghi rõ ngày đáo hạn. Có ngày này thì không cần thời hạn.')}
+      ${fld('Ngày đáo hạn cụ thể', ti('ngay_ket_thuc', 'date', l.ngay_ket_thuc), 'Nếu ngân hàng ghi rõ ngày đáo hạn. Nhập ngày này thì để trống "Thời hạn" (hoặc nhập thời hạn khớp với ngày này).')}
       ${fld('Nhóm', ti('nhom', 'text', l.nhom, 'maxlength="30" placeholder="VD: nha"'), 'Các khoản đảo nợ nối tiếp nhau dùng chung một nhóm (chữ không dấu, không khoảng trắng).')}
     </div>
     <label class="chk"><input id="le-dao" type="checkbox" ${l.dao_no ? 'checked' : ''}> Gốc cuối kỳ trả bằng khoản vay mới (đảo nợ)</label>
@@ -915,30 +954,42 @@ function openLoanEditor(idx) {
       so_thang: val('so_thang') ? V.num(val('so_thang')) : null, ngay_tra: V.num(val('ngay_tra')), goc_moi_ky: V.money(val('goc_moi_ky')), ky_dau: V.mon(val('ky_dau')),
       nhac_truoc: val('nhac_truoc') === '' ? 5 : V.num(val('nhac_truoc')), lui_ngay_nghi: g('lui').checked,
       ngay_ket_thuc: val('ngay_ket_thuc') || undefined, nhom: val('nhom') || undefined, dao_no: g('dao').checked || undefined };
-    const gd = out.ngay_giai_ngan, okGd = V.isDate(gd);
+    const gd = out.ngay_giai_ngan, okGd = V.isDate(gd) && !V.dateErr(gd, true, '2000-01-01', addDays(todayStr(), 366));
     if (!out.ten) E.push([g('ten'), 'Nhập tên khoản vay']);
-    if (!out.so_tien_vay) E.push([g('so_tien_vay'), 'Nhập số tiền vay']); else if (out.so_tien_vay > 10e9) E.push([g('so_tien_vay'), 'Số tiền quá lớn, kiểm tra lại số 0']);
-    if (!okGd) E.push([g('ngay_giai_ngan'), 'Chọn ngày giải ngân']);
+    else if (out.ten.length > 60) E.push([g('ten'), 'Tối đa 60 ký tự']);
+    if (!out.so_tien_vay) E.push([g('so_tien_vay'), 'Nhập số tiền vay']); else if (out.so_tien_vay < 1e6) E.push([g('so_tien_vay'), 'Tối thiểu 1.000.000 đ']); else if (out.so_tien_vay > 10e9) E.push([g('so_tien_vay'), 'Số tiền quá lớn, kiểm tra lại số 0']);
+    E.push([g('ngay_giai_ngan'), V.dateErr(gd, true, '2000-01-01', addDays(todayStr(), 366), 'Ngày giải ngân')]);
     if (out.so_thang != null && (!Number.isInteger(out.so_thang) || out.so_thang < 1 || out.so_thang > 480)) E.push([g('so_thang'), 'Nhập số tháng nguyên từ 1 đến 480']);
     E.push([g('ngay_tra'), V.day(val('ngay_tra'))]);
     if (out.kieu === 'tra_gop') {
       if (!out.goc_moi_ky) E.push([g('goc_moi_ky'), 'Trả góp cần nhập gốc mỗi kỳ']);
+      else if (out.goc_moi_ky < 10000) E.push([g('goc_moi_ky'), 'Tối thiểu 10.000 đ']);
       else if (out.goc_moi_ky > out.so_tien_vay) E.push([g('goc_moi_ky'), 'Gốc mỗi kỳ không được lớn hơn số tiền vay']);
     }
     if (out.ky_dau === '!') E.push([g('ky_dau'), V.monErr(val('ky_dau'))]);
     else if (out.ky_dau && okGd && out.ky_dau < monthOf(gd)) E.push([g('ky_dau'), 'Không được trước tháng giải ngân']);
+    else if (out.ky_dau && okGd && out.ky_dau > addMonth(monthOf(gd), 12)) E.push([g('ky_dau'), 'Không được quá 12 tháng sau tháng giải ngân']);
     if (!Number.isInteger(out.nhac_truoc) || out.nhac_truoc < 0 || out.nhac_truoc > 30) E.push([g('nhac_truoc'), 'Nhập số ngày nguyên từ 0 đến 30']);
-    if (out.ngay_ket_thuc && okGd && out.ngay_ket_thuc <= gd) E.push([g('ngay_ket_thuc'), 'Phải sau ngày giải ngân']);
+    if (out.ngay_ket_thuc) {
+      const m = V.dateErr(out.ngay_ket_thuc, false, okGd ? addDays(gd, 1) : '', okGd ? addDays(gd, 365 * 40) : '', 'Ngày đáo hạn');
+      if (m) E.push([g('ngay_ket_thuc'), m]);
+      else if (okGd && out.so_thang && addMonth(monthOf(gd), out.so_thang) !== monthOf(out.ngay_ket_thuc))
+        E.push([g('so_thang'), `Không khớp ngày đáo hạn ${fmtD(out.ngay_ket_thuc)}. Để trống ô này hoặc sửa cho khớp`]);
+    }
+    // ngày cuối cùng còn tính lãi (để giới hạn các dòng bên dưới)
+    const endD = out.ngay_ket_thuc && V.isDate(out.ngay_ket_thuc) ? out.ngay_ket_thuc : okGd && out.so_thang > 0 ? dueOf(addMonth(monthOf(gd), out.so_thang), +gd.slice(8)) : '';
+    const endM = endD ? monthOf(endD) : '', firstM = out.ky_dau && out.ky_dau !== '!' ? out.ky_dau : okGd ? addMonth(monthOf(gd), 1) : '';
     if (out.nhom && !/^[a-z0-9_-]+$/i.test(out.nhom)) E.push([g('nhom'), 'Chỉ dùng chữ không dấu, số, gạch ngang (VD: nha)']);
     // các danh sách
     const rowsOf = key => [...ed.querySelectorAll(`fieldset[data-list="${key}"] .lrow`)].map(row => {
       const o = { _row: row }; row.querySelectorAll('input').forEach(i => { const raw = i.value.trim(); o[i.dataset.k] = i.matches('[data-month]') ? V.mon(raw) : raw; o['_' + i.dataset.k] = i; }); return o;
     }).filter(o => LIST_DEFS[key].fields.some(([k]) => o[k]));
-    const inRange = d => !okGd || d >= gd;
+    const inRange = d => (!okGd || d >= gd) && (!endD || d <= endD);
+    const rangeTxt = (okGd ? ' (từ ' + fmtD(gd) : ' (') + (endD ? ' đến ' + fmtD(endD) : '') + ')';
     const ls = rowsOf('lai_suat');
     if (!ls.length) E.push([ed.querySelector('[data-addrow=lai_suat]'), 'Cần ít nhất một mức lãi suất']);
     ls.forEach(r => {
-      if (!V.isDate(r.tu_ngay)) E.push([r._tu_ngay, 'Dòng lãi suất: chọn ngày']); else if (!inRange(r.tu_ngay)) E.push([r._tu_ngay, 'Ngày đổi lãi không được trước ngày giải ngân']);
+      if (!V.isDate(r.tu_ngay)) E.push([r._tu_ngay, 'Dòng lãi suất: chọn ngày']); else if (!inRange(r.tu_ngay)) E.push([r._tu_ngay, 'Ngày đổi lãi phải trong thời gian vay' + rangeTxt]);
       const m = V.rate(r.nam); if (m) E.push([r._nam, 'Dòng lãi suất: ' + m.toLowerCase()]);
     });
     const dates = ls.map(r => r.tu_ngay).filter(Boolean);
@@ -946,19 +997,26 @@ function openLoanEditor(idx) {
     if (okGd && dates.length && !dates.some(d => d <= gd)) E.push([ls[0]._tu_ngay, 'Phải có một mức lãi từ ngày giải ngân ' + fmtD(gd)]);
     const tt = rowsOf('tra_truoc');
     tt.forEach(r => {
-      if (!V.isDate(r.ngay)) E.push([r._ngay, 'Chọn ngày trả trước']); else if (!inRange(r.ngay)) E.push([r._ngay, 'Ngày trả trước không được trước ngày giải ngân']);
+      if (!V.isDate(r.ngay)) E.push([r._ngay, 'Chọn ngày trả trước']); else if (!inRange(r.ngay)) E.push([r._ngay, 'Ngày trả trước phải trong thời gian vay' + rangeTxt]);
       const n = V.money(r.so_tien); if (!n) E.push([r._so_tien, 'Nhập số tiền trả trước']); else if (n > out.so_tien_vay) E.push([r._so_tien, 'Lớn hơn số tiền vay']);
     });
+    const sumTT = tt.reduce((a, r) => a + V.money(r.so_tien), 0);
+    if (tt.length && out.so_tien_vay && sumTT >= out.so_tien_vay) E.push([tt[tt.length - 1]._so_tien, 'Tổng trả trước (' + fmt(sumTT) + ' đ) phải nhỏ hơn số tiền vay']);
     const td = rowsOf('tam_dung_goc');
     td.forEach(r => {
       if (!V.isMonth(r.tu_ky)) E.push([r._tu_ky, V.monErr(r._tu_ky.value, true).replace('Nhập tháng', 'Nhập tháng bắt đầu')]);
       if (!V.isMonth(r.den_ky)) E.push([r._den_ky, V.monErr(r._den_ky.value, true).replace('Nhập tháng', 'Nhập tháng kết thúc')]);
       else if (V.isMonth(r.tu_ky) && r.den_ky < r.tu_ky) E.push([r._den_ky, '"Đến tháng" phải sau hoặc bằng "Từ tháng"']);
+      if (V.isMonth(r.tu_ky) && firstM && r.tu_ky < firstM) E.push([r._tu_ky, 'Không được trước kỳ trả đầu tiên ' + monTxt(firstM)]);
+      if (V.isMonth(r.den_ky) && endM && r.den_ky > endM) E.push([r._den_ky, 'Không được sau tháng đáo hạn ' + monTxt(endM)]);
     });
+    td.forEach((r, i) => { if (td.some((x, j) => j < i && V.isMonth(x.tu_ky) && V.isMonth(x.den_ky) && r.tu_ky <= x.den_ky && r.den_ky >= x.tu_ky)) E.push([r._tu_ky, 'Chồng lên một khoảng tạm dừng khác']); });
     const dn = rowsOf('doi_ngay');
     dn.forEach(r => {
       if (!V.isMonth(r.thang)) E.push([r._thang, V.monErr(r._thang.value, true)]);
-      if (!V.isDate(r.ngay)) E.push([r._ngay, 'Chọn ngày trả thật']);
+      else if (firstM && r.thang < firstM) E.push([r._thang, 'Không được trước kỳ trả đầu tiên ' + monTxt(firstM)]);
+      else if (endM && r.thang > endM) E.push([r._thang, 'Không được sau tháng đáo hạn ' + monTxt(endM)]);
+      if (!V.isDate(r.ngay)) E.push([r._ngay, r.ngay ? 'Ngày không hợp lệ' : 'Chọn ngày trả thật']);
       else if (V.isMonth(r.thang)) { const m = doiNgayErr(r.thang, r.ngay, out.ngay_tra); if (m) E.push([r._ngay, m]); }
     });
     if (new Set(dn.map(r => r.thang)).size < dn.length) E.push([dn[dn.length - 1]._thang, 'Trùng tháng với dòng khác']);
@@ -1167,12 +1225,17 @@ function saveCatalog() {
   const split = v => [...new Set(v.split(/[,;\n]/).map(x => x.trim().replace(/\s+/g, ' ')).filter(Boolean))];
   const pi = $('#cfg-people'), ci = $('#cfg-cats'), ppl = split(pi.value).filter(x => x.toLowerCase() !== 'chung'), cats = split(ci.value), E = [];
   const used = f => records().filter(f).length;
+  const dupOf = arr => arr.filter((x, i) => arr.findIndex(y => fold(y) === fold(x)) !== i);
   if (!ppl.length) E.push([pi, 'Cần ít nhất 1 thành viên']);
+  else if (dupOf(ppl).length) E.push([pi, 'Trùng tên: ' + dupOf(ppl).join(', ')]);
+  else if (ppl.some(x => !/^[\p{L}\d][\p{L}\d .'-]*$/u.test(x))) E.push([pi, 'Tên chỉ gồm chữ, số, khoảng trắng']);
   else if (ppl.some(x => x.length > 20)) E.push([pi, 'Mỗi tên tối đa 20 ký tự']);
   else if (ppl.length > 12) E.push([pi, 'Tối đa 12 thành viên']);
   else { const lost = people().filter(x => x !== 'Chung' && !ppl.includes(x) && used(r => r.nguoi === x)); if (lost.length) E.push([pi, `Không bỏ được ${lost.join(', ')} vì đã có khoản chi (${lost.map(x => fmt(used(r => r.nguoi === x))).join(', ')} khoản)`]); }
   const dup = cats.filter(x => CATS.some(c => fold(c) === fold(x)));
   if (dup.length) E.push([ci, 'Trùng hạng mục có sẵn: ' + dup.join(', ')]);
+  else if (dupOf(cats).length) E.push([ci, 'Trùng tên: ' + dupOf(cats).join(', ')]);
+  else if (cats.length > 20) E.push([ci, 'Tối đa 20 hạng mục thêm']);
   else if (cats.some(x => x.length > 50)) E.push([ci, 'Mỗi hạng mục tối đa 50 ký tự']);
   else { const lost = (conf().cats_extra || []).filter(x => !cats.includes(x) && used(r => r.hangmuc === x)); if (lost.length) E.push([ci, 'Không bỏ được ' + lost.join(', ') + ' vì đang có khoản chi thuộc hạng mục này']); }
   if (!vShow($('#catalogColl'), E)) return;
@@ -1308,7 +1371,7 @@ function init() {
     $('#f-ten').value = b.dataset.n; state.form.catTouched = false; autoCategory();
     const a = lastAmountFor(b.dataset.n, state.form.nguoi); if (a && !$('#f-tien').value) $('#f-tien').value = fmt(a);
   };
-  $('#f-tien').addEventListener('input', e => { const n = parseInt(e.target.value.replace(/[^\d]/g, ''), 10); e.target.value = n ? fmt(n) : ''; });
+  $('#f-tien').addEventListener('input', e => { const n = parseInt(e.target.value.replace(/[^\d]/g, '').slice(0, 10), 10); e.target.value = n ? fmt(n) : ''; });
   $('#f-tien').addEventListener('blur', e => { const n = parseAmount(e.target.value); e.target.value = n ? fmt(n) : ''; });
   $('#f-ten').addEventListener('input', autoCategory);
   $('#f-hangmuc').addEventListener('change', () => { state.form.catTouched = true; state.form.catUser = true; autoCategory(); });

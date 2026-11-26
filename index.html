@@ -72,7 +72,7 @@
               <p class="edit-note"><svg class="ic"><use href="#i-edit"/></svg>Đang sửa một khoản đã nhập</p>
               <input type="hidden" id="f-id">
               <div class="row">
-                <label class="fld"><span class="fl">Ngày *</span><input type="date" id="f-ngay"><small class="err"></small></label>
+                <label class="fld"><span class="fl">Ngày *</span><input type="date" id="f-ngay" data-req><small class="err"></small></label>
                 <label class="fld"><span class="fl">Số tiền (đ) *</span><input type="text" id="f-tien" class="money" inputmode="numeric" autocomplete="off" placeholder="0"><small class="err"></small></label>
               </div>
               <div class="quick" id="quickAmt"></div>
@@ -112,7 +112,7 @@
           <div class="toolbar card">
             <select id="ds-thang" aria-label="Tháng"></select>
             <select id="ds-hangmuc" aria-label="Hạng mục"><option value="">Tất cả hạng mục</option></select>
-            <label class="search"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="ds-tim" placeholder="Tìm khoản chi" aria-label="Tìm khoản chi"></label>
+            <label class="search"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="ds-tim" maxlength="60" placeholder="Tìm khoản chi" aria-label="Tìm khoản chi"></label>
             <div class="seg-toggle" id="ds-view" role="tablist">
               <button type="button" data-view="nguoi" class="on">Theo người</button>
               <button type="button" data-view="ngay">Theo ngày</button>
@@ -165,12 +165,12 @@
             <div class="card">
               <div class="card-h"><h2>Kết nối Google Sheet</h2></div>
               <label class="fld"><span class="fl">Địa chỉ Web App (Apps Script)</span>
-                <input type="url" id="cfg-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
-                <small class="hint">Đường dẫn kết thúc bằng /exec, lấy ở Apps Script → Triển khai → Quản lý triển khai.</small>
+                <input type="url" id="cfg-url" maxlength="300" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+                <small class="hint">Đường dẫn kết thúc bằng /exec, lấy ở Apps Script → Triển khai → Quản lý triển khai.</small><small class="err"></small>
               </label>
               <label class="fld"><span class="fl">Mã bí mật (SECRET)</span>
-                <input type="password" id="cfg-key" autocomplete="off">
-                <small class="hint">Giống hệt giá trị SECRET trong Cài đặt dự án của Apps Script.</small>
+                <input type="password" id="cfg-key" autocomplete="off" maxlength="100">
+                <small class="hint">Giống hệt giá trị SECRET trong Cài đặt dự án của Apps Script.</small><small class="err"></small>
               </label>
               <div class="actions"><button type="button" class="btn primary" id="cfg-save">Lưu &amp; kiểm tra</button></div>
               <p class="muted" id="cfg-info"></p>
@@ -190,11 +190,11 @@
             <button type="button" class="coll-h" aria-expanded="false"><span class="coll-t"><b><svg class="ic"><use href="#i-users"/></svg>Thành viên &amp; hạng mục</b><small id="catalogSub"></small></span><svg class="ic chev"><use href="#i-down"/></svg></button>
             <div class="coll-b">
               <label class="fld"><span class="fl">Thành viên gia đình</span>
-                <input type="text" id="cfg-people" autocomplete="off" placeholder="VD: Chồng, Vợ, Jun, Putin, Út">
+                <input type="text" id="cfg-people" autocomplete="off" maxlength="300" placeholder="VD: Chồng, Vợ, Jun, Putin, Út">
                 <small class="hint">Cách nhau bằng dấu phẩy, theo thứ tự muốn hiển thị. "Chung" luôn có sẵn ở cuối. Không bỏ được người đã có khoản chi.</small><small class="err"></small>
               </label>
               <label class="fld"><span class="fl">Hạng mục thêm</span>
-                <input type="text" id="cfg-cats" autocomplete="off" placeholder="VD: Thú cưng, Bảo hiểm">
+                <input type="text" id="cfg-cats" autocomplete="off" maxlength="1000" placeholder="VD: Thú cưng, Bảo hiểm">
                 <small class="hint">Ngoài các hạng mục có sẵn. Cách nhau bằng dấu phẩy. App không tự phân loại vào hạng mục thêm; chọn tay một lần thì app nhớ cho lần sau.</small><small class="err"></small>
               </label>
               <div class="actions"><button type="button" class="btn primary" id="catalogSave">Lưu</button></div>
