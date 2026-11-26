@@ -65,6 +65,29 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Hiệu ứng biểu đồ: chỉ chạy khi khối cha có class .anim (số liệu đổi hoặc vừa mở tab) */
+@keyframes growY { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes growX { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+@keyframes sweep { from { stroke-dashoffset: var(--c); } to { stroke-dashoffset: 0; } }
+:root { --ease-out: cubic-bezier(.22, 1, .36, 1); }
+.anim .vb i { transform-origin: 50% 100%; animation: growY .7s var(--ease-out) both; animation-delay: calc(min(var(--i, 0), 31) * 28ms); }
+.anim .vb em { animation: fadeUp .45s ease both; animation-delay: calc(min(var(--i, 0), 31) * 28ms + .4s); }
+.anim > .bar { animation: fadeUp .4s var(--ease-out) both; animation-delay: calc(min(var(--i, 0), 20) * 40ms); }
+.anim > .bar .fill { transform-origin: 0 50%; animation: growX .8s var(--ease-out) both; animation-delay: calc(min(var(--i, 0), 20) * 40ms + .1s); }
+.anim > .kpi { animation: fadeUp .45s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 70ms); }
+.anim .dsweep { animation: sweep 1s cubic-bezier(.65, 0, .35, 1) both; }
+.anim .donut-c, .anim .donut-s { transform-box: fill-box; transform-origin: center; animation: popIn .5s var(--ease-out) .55s both; }
+.anim .next-card, .anim .debt-card { animation: fadeUp .45s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 70ms); }
+.anim .dc-bar i { transform-origin: 0 50%; animation: growX 1s var(--ease-out) .25s both; }
+/* tương tác */
+.dsegs circle { transition: stroke-width .2s var(--ease-out), opacity .2s; cursor: pointer; }
+.dsegs:hover circle { opacity: .55; } .dsegs circle:hover { opacity: 1; stroke-width: 32; }
+.vb i { transition: opacity .15s, transform .2s var(--ease-out), box-shadow .15s; transform-origin: 50% 100%; }
+.vb:hover i, .vb.sel i { transform: scaleY(1.03); }
+.bars .bar .fill { transition: filter .15s; } .bars .bar:hover .fill { filter: brightness(1.15) saturate(1.1); }
+.kpi { transition: transform .2s var(--ease-out), box-shadow .2s; } .kpi:hover { transform: translateY(-2px); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
 /* ---------- 3. Khung trang ---------- */
@@ -362,7 +385,7 @@ label.chk input { width: 18px; height: 18px; flex: none; accent-color: var(--fil
 .vb { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; cursor: pointer; }
 .vb em { font-style: normal; font-size: 10px; font-weight: 600; color: var(--tx2); white-space: nowrap; }
 .vb i { display: block; width: 100%; max-width: 40px; height: calc((100% - 36px) * var(--h, 0)); min-height: 2px; border-radius: 6px 6px 2px 2px;
-  background: linear-gradient(180deg, var(--ac), var(--ac2)); opacity: .85; transition: opacity .15s; }
+  background: linear-gradient(180deg, var(--ac), var(--ac2)); opacity: .85; transition: opacity .15s, transform .2s var(--ease-out), box-shadow .15s; }
 .vb:hover i, .vb.sel i { opacity: 1; box-shadow: 0 0 0 2px color-mix(in srgb, var(--ac) 45%, transparent); }
 .vb.cur i { background: linear-gradient(180deg, var(--ok), color-mix(in srgb, var(--ok) 55%, var(--ac))); opacity: 1; }
 .vb small { font-size: 10px; white-space: nowrap; }

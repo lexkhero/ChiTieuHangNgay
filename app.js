@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.17';
+const APP_VERSION = '3.18';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -390,6 +390,26 @@ function renderList() {
 
 /* ---------- tổng hợp ---------- */
 /** rows: [{key, label, v, extra, ratio, color}] */
+/* ---------- hiệu ứng biểu đồ ----------
+ * Chỉ chạy khi số liệu đổi hoặc khi vừa mở tab; đồng bộ nền mà số không đổi thì không chạy lại cho đỡ rối mắt. */
+const animSig = new Map();
+const reduceMotion = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function anim(el, sig) {
+  const k = el.id || el, ch = animSig.get(k) !== sig; animSig.set(k, sig);
+  el.classList.remove('anim'); if (ch && !reduceMotion()) { void el.offsetWidth; el.classList.add('anim'); }
+  [...el.children].forEach((c, i) => c.style.setProperty('--i', i));
+  return ch;
+}
+/** số chạy từ giá trị cũ (hoặc 0) lên giá trị mới: các phần tử có data-n */
+function countUp(root) {
+  if (reduceMotion()) return;
+  root.querySelectorAll('[data-n]').forEach(el => {
+    const to = +el.dataset.n, suf = el.dataset.suf || '', from = +(el.dataset.from || 0), t0 = performance.now(), D = 850;
+    if (from === to) return;
+    const step = t => { const p = Math.min(1, (t - t0) / D), e = 1 - Math.pow(1 - p, 3); el.textContent = fmt(from + (to - from) * e) + suf; if (p < 1) requestAnimationFrame(step); };
+    el.textContent = fmt(from) + suf; requestAnimationFrame(step);
+  });
+}
 function bars(el, rows, total, onClick) {
   const max = Math.max(1, ...rows.map(r => r.v));
   el.innerHTML = rows.length ? rows.map(r => `<div class="bar" data-k="${esc(r.key)}" style="--bc:${r.color || 'var(--ac)'}"><div class="h"><span class="nm"><i class="sw"></i><span>${esc(r.label)}<small>${total ? pct1(r.v / total * 100) : ''}${r.extra ? ' · ' + esc(r.extra) : ''}</small></span></span>
@@ -397,6 +417,7 @@ function bars(el, rows, total, onClick) {
     <div class="track"><div class="fill${r.ratio > 1 ? ' over' : r.ratio >= 0.9 ? ' warn' : ''}" style="width:${(r.ratio ? Math.min(100, r.ratio * 100) : r.v / max * 100).toFixed(1)}%"></div></div></div>`).join('')
     : '<p class="muted">Chưa có dữ liệu</p>';
   el.onclick = e => { const b = e.target.closest('.bar'); if (b && onClick) onClick(b.dataset.k); };
+  anim(el, rows.map(r => r.key + ':' + r.v).join('|'));
 }
 /** biểu đồ cột dọc. rows: [{key, label, short, v, cur}] ; showVal: ghi số (triệu) trên đầu cột */
 function vbars(el, rows, onClick, showVal) {
@@ -410,6 +431,7 @@ function vbars(el, rows, onClick, showVal) {
   el.onclick = e => { const b = e.target.closest('.vb'); if (!b) return; if (b.dataset.k && onClick) onClick(b.dataset.k); else show(b); };
   el.onmouseover = e => { const b = e.target.closest('.vb'); if (b) show(b); };
   el.onmouseleave = () => show(null);
+  const w = el.querySelector('.vb-wrap'); if (w) { w.id = el.id + '-w'; anim(w, rows.map(r => r.v).join('|')); }
 }
 /** biểu đồ tròn: 8 hạng mục lớn nhất + gộp phần còn lại, không để hở */
 function donut(rows, total) {
@@ -417,7 +439,9 @@ function donut(rows, total) {
   const top = rows.filter(r => r.v > 0).slice(0, 8), rest = rows.filter(r => r.v > 0).slice(8).reduce((a, r) => a + r.v, 0);
   if (rest > 0) top.push({ label: 'Các hạng mục khác', v: rest, color: '#64748b' });
   const segs = top.map(r => { const len = r.v / total * C; const sg = `<circle cx="100" cy="100" r="${R}" fill="none" stroke="${r.color}" stroke-width="26" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 100 100)"><title>${esc(r.label)}: ${fmt(r.v)} đ (${pct1(r.v / total * 100)})</title></circle>`; off += len; return sg; }).join('');
-  return `<svg viewBox="0 0 200 200" role="img" aria-label="Tỉ lệ chi tiêu theo hạng mục"><circle cx="100" cy="100" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="26"/>${segs}
+  return `<svg viewBox="0 0 200 200" role="img" aria-label="Tỉ lệ chi tiêu theo hạng mục"><defs><mask id="dmask"><circle class="dsweep" cx="100" cy="100" r="${R}" fill="none" stroke="#fff" stroke-width="40"
+      stroke-dasharray="${C.toFixed(2)}" style="--c:${C.toFixed(2)}" transform="rotate(-90 100 100)"/></mask></defs>
+    <circle cx="100" cy="100" r="${R}" fill="none" stroke="var(--bg2)" stroke-width="26"/><g class="dsegs" mask="url(#dmask)">${segs}</g>
     <text x="100" y="98" class="donut-c">${compact(total)}</text><text x="100" y="114" class="donut-s">TỔNG CHI</text></svg>`;
 }
 function groupSum(rs, key) {
@@ -425,7 +449,7 @@ function groupSum(rs, key) {
   for (const r of rs) { const k = typeof key === 'function' ? key(r) : r[key]; const g = m.get(k) || [0, 0]; g[0] += r.tien; g[1]++; m.set(k, g); }
   return m;
 }
-const kpi = (label, val, color, sub) => `<div class="kpi" style="--kc:${color}"><span>${label}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+const kpi = (label, val, color, sub, n) => `<div class="kpi" style="--kc:${color}"><span>${label}</span><b${n != null ? ` data-n="${Math.round(n)}" data-suf=" đ"` : ''}>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
 /** % thay đổi, kèm mũi tên; tăng chi = đỏ, giảm chi = xanh */
 function delta(now, before, label) {
   if (!before) return '';
@@ -460,19 +484,20 @@ function renderSummary() {
     cmp = delta(total, sumIf(r => r.thang >= py + '-01' && r.thang <= py + '-' + lastM),
       y === thisY ? `so với ${+lastM} tháng đầu ${py}` : 'so với năm ' + py);
   }
-  let k = kpi('Tổng chi tiêu', fmt(total) + ' đ', 'var(--ac)', fmt(rs.length) + ' khoản' + (cmp ? '<br>' + cmp : ''))
-    + kpi(avgLbl, fmt(avg) + ' đ', 'var(--ok)', avgSub);
+  let k = kpi('Tổng chi tiêu', fmt(total) + ' đ', 'var(--ac)', fmt(rs.length) + ' khoản' + (cmp ? '<br>' + cmp : ''), total)
+    + kpi(avgLbl, fmt(avg) + ' đ', 'var(--ok)', avgSub, avg);
   const loans = conf().loans || [];
   if (loans.length && !p) {
     const gs = debtByGroup(loans, y, m), cols = ['#fb923c', '#22d3ee', '#f472b6', '#84cc16'];
     let tg = 0, tl = 0, tdn = 0;
     gs.forEach((g, j) => {
       tg += g.goc; tl += g.lai; tdn += g.duNo;
-      k += kpi('Trả nợ ' + g.short, fmt(g.goc + g.lai) + ' đ', cols[j % cols.length], `gốc ${fmt(g.goc)} · lãi ${fmt(g.lai)}`);
+      k += kpi('Trả nợ ' + g.short, fmt(g.goc + g.lai) + ' đ', cols[j % cols.length], `gốc ${fmt(g.goc)} · lãi ${fmt(g.lai)}`, g.goc + g.lai);
     });
-    k += kpi('Chi tiêu + trả nợ', fmt(total + tg + tl) + ' đ', 'var(--ac2)', `trả nợ ${fmt(tg + tl)} · dư nợ ${compact(tdn)}<br><button type="button" class="link" data-th-no>Xem chi tiết nợ vay →</button>`);
+    k += kpi('Chi tiêu + trả nợ', fmt(total + tg + tl) + ' đ', 'var(--ac2)', `trả nợ ${fmt(tg + tl)} · dư nợ ${compact(tdn)}<br><button type="button" class="link" data-th-no>Xem chi tiết nợ vay →</button>`, total + tg + tl);
   }
-  $('#th-kpis').innerHTML = k;
+  const kEl = $('#th-kpis'); kEl.innerHTML = k;
+  if (anim(kEl, [...kEl.querySelectorAll('[data-n]')].map(b => b.dataset.n).join('|'))) countUp(kEl);
 
   const goList = (field, val) => {
     dsPerson = field === 'nguoi' ? val : p; $('#ds-thang').value = m || ''; $('#ds-thang').dataset.init = 1; $('#ds-hangmuc').value = field === 'hangmuc' ? val : '';
@@ -483,6 +508,7 @@ function renderSummary() {
   const catRows = cats.map(([c, g]) => ({ key: c, label: c, v: g[0], extra: g[1] + ' khoản' + (bud[c] ? ' · ngân sách ' + fmt(bud[c]) : ''), ratio: bud[c] ? g[0] / bud[c] : 0, color: catCol(c) }));
   Object.keys(bud).forEach(c => { if (bud[c] && !catRows.some(r => r.key === c)) catRows.push({ key: c, label: c, v: 0, extra: 'ngân sách ' + fmt(bud[c]), ratio: 0, color: catCol(c) }); });
   $('#th-donut').innerHTML = total ? donut(catRows, total) : '';
+  anim($('#th-donut'), total + '|' + catRows.slice(0, 8).map(r => r.v).join('|'));
   bars($('#th-hangmuc'), catRows, total, c => goList('hangmuc', c));
   const ppl = people();
   bars($('#th-nguoi-bars'), [...groupSum(rs, 'nguoi')].sort((a, b) => ppl.indexOf(a[0]) - ppl.indexOf(b[0])).map(([n, g]) => ({ key: n, label: n, v: g[0], extra: g[1] + ' khoản', color: pcol(n) })), total, n => goList('nguoi', n));
@@ -1160,7 +1186,7 @@ function renderDebtView() {
   let html = `<h2 class="sec-title">Kỳ trả sắp tới</h2><div class="next-grid">${gs.filter(g => g.next).map(g => {
     const n = g.next, cls = n.con_ngay <= 1 ? 'red' : n.con_ngay <= 5 ? 'warn' : '';
     return `<div class="next-card" style="--gc:${g.color}"><div class="nc-h"><b>${esc(g.short)}</b><span class="badge ${cls}">${n.con_ngay === 0 ? 'Hôm nay' : 'Còn ' + n.con_ngay + ' ngày'}</span></div>
-      <div class="nc-d">${fmtD(n.ngay)}</div><div class="nc-v">${fmt(n.tong)} đ</div>
+      <div class="nc-d">${fmtD(n.ngay)}</div><div class="nc-v" data-n="${n.tong}" data-suf=" đ">${fmt(n.tong)} đ</div>
       <div class="nc-s">gốc ${fmt(n.goc)} · lãi ${fmt(n.lai)}${n.chi_tiet_lai.length > 1 ? `<br>${n.chi_tiet_lai.map(p => `${pc(p.lai_suat)}: ${fmt(p.lai)}`).join(' + ')}` : ''}</div></div>`;
   }).join('')}<div class="next-card total"><div class="nc-h"><b>Tổng kỳ tới</b></div><div class="nc-d">&nbsp;</div><div class="nc-v">${fmt(gs.reduce((a, g) => a + (g.next ? g.next.tong : 0), 0))} đ</div><div class="nc-s">Lãi đang tính đến hôm nay: ${fmt(sum('accrued'))} đ</div></div></div>`;
 
@@ -1214,6 +1240,8 @@ function renderDebtView() {
   html += `<div class="sect-h"><h2 class="sec-title" style="margin:0">Từng kỳ năm ${debtYear}</h2><div class="chips yr">${years.map(y => `<button type="button" class="chip${y === debtYear ? ' on' : ''}" data-dy="${y}">${y}</button>`).join('')}</div></div>
     <div class="tablewrap"><table class="tbl rsp debt-months"><tr><th>Tháng</th>${gs.map(g => `<th>${esc(g.short)}</th>`).join('')}<th>Tổng tháng</th><th>Lũy kế năm</th><th>Trạng thái</th></tr>${mRows}</table></div>`;
   el.innerHTML = html;
+  if (anim(el, gs.map(g => [g.duNo, g.paidG, g.totG, g.next ? g.next.tong : 0].join(',')).join('|') + today)) countUp(el);
+  el.querySelectorAll('.next-card, .debt-card').forEach((c, i) => c.style.setProperty('--i', i));
 }
 
 /* ---------- so sánh các năm ---------- */
@@ -1308,7 +1336,7 @@ function showTab(id) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === id));
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   $('#pageTitle').textContent = TITLES[id] || '';
-  renderAll(); window.scrollTo({ top: 0 });
+  animSig.clear(); renderAll(); window.scrollTo({ top: 0 });
 }
 function labelTables() {
   document.querySelectorAll('table.rsp:not([data-l])').forEach(t => {
