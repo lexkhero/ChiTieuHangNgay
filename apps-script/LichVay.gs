@@ -8,7 +8,10 @@
 const SHEET_LICH = 'Lịch vay (app)';
 const LICH_COT = ['Kỳ', 'Ngày trả', 'Từ ngày', 'Số ngày', 'Dư nợ đầu kỳ', 'Lãi suất (%/năm)', 'Gốc', 'Lãi', 'Tổng trả', 'Trả trước gốc', 'Trạng thái', 'Cách tính lãi'];
 
-function ngay_(s) { const p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+/** 'YYYY-MM-DD' -> Date lúc 12 giờ trưa theo múi giờ của file Sheet.
+ *  (new Date(y, m, d) theo múi giờ của dự án Apps Script làm ô ngày trên Sheet bị lùi 1 ngày khi hai múi giờ khác nhau) */
+function ngay_(s) { return Utilities.parseDate(String(s) + ' 12:00', SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm'); }
+function dmy2_(s) { return String(s).slice(8, 10) + '/' + String(s).slice(5, 7) + '/' + String(s).slice(0, 4); }
 function dm_(s) { return s.slice(8, 10) + '/' + s.slice(5, 7); }
 function ls_(x) { return String(x).replace('.', ',') + '%'; }
 function tenGoc_(t) { return String(t || '').replace(/\s*\(.*\)\s*$/, ''); }
@@ -49,14 +52,14 @@ function veLichVay_(cfg) {
       daTra.reduce((a, r) => a + (r.dao_no ? 0 : r.goc) + r.tra_truoc, 0), '',
       daTra.reduce((a, r) => a + r.lai, 0), '',
       conLai.reduce((a, r) => a + r.lai, 0), '',
-      tiep ? Utilities.formatDate(ngay_(tiep.ngay), TZ, 'dd/MM/yyyy') + ': ' + vnd_(tiep.tong) : 'Đã tất toán'], 'tomtat');
+      tiep ? dmy2_(tiep.ngay) + ': ' + vnd_(tiep.tong) : 'Đã tất toán'], 'tomtat');
     push([]);
 
     g.ds.forEach(x => {
       const l = x.l, s = x.s;
       const mucLai = (l.lai_suat || []).slice().sort((a, b) => a.tu_ngay < b.tu_ngay ? -1 : 1)
-        .map(r => ls_(r.nam) + ' từ ' + Utilities.formatDate(ngay_(r.tu_ngay), TZ, 'dd/MM/yyyy')).join(', ');
-      push([l.ten + ' · giải ngân ' + Utilities.formatDate(ngay_(l.ngay_giai_ngan), TZ, 'dd/MM/yyyy') + ' · ' + vnd_(l.so_tien_vay) +
+        .map(r => ls_(r.nam) + ' từ ' + dmy2_(r.tu_ngay)).join(', ');
+      push([l.ten + ' · giải ngân ' + dmy2_(l.ngay_giai_ngan) + ' · ' + vnd_(l.so_tien_vay) +
         ' · ' + (l.kieu === 'tra_lai' ? 'trả lãi hằng tháng, gốc cuối kỳ' : 'trả góp gốc ' + vnd_(l.goc_moi_ky) + '/tháng') + ' · lãi suất: ' + mucLai], 'khoan');
       if (!s) { push(['Cấu hình khoản vay lỗi, kiểm tra lại trên app']); push([]); return; }
       if (!s.dao_han) push(['Chưa có ngày đáo hạn: lịch dưới đây là ' + s.rows.length + ' kỳ dự kiến, nhập ngày đáo hạn hoặc đảo nợ trên app khi có.'], 'ghichu');
