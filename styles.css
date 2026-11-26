@@ -265,6 +265,15 @@ label.chk input { width: 18px; height: 18px; flex: none; accent-color: var(--fil
 .tbl tr:last-child td { border-bottom: 0; }
 .tbl td small { display: block; white-space: nowrap; }
 .tbl tr.total td { font-weight: 700; background: var(--bg2); }
+/* So sánh các năm: cột nhãn co theo chữ dài nhất, nhãn dài xuống dòng để nhường chỗ cho số liệu */
+#cmp-table td:first-child, #cmp-table th:first-child { width: 1%; min-width: 48px; max-width: 84px; white-space: normal; line-height: 1.3; }
+#cmp-table .sm { display: none; }
+@media (max-width: 640px) {
+  #cmp-table th, #cmp-table td { padding: 8px 5px; font-size: 12.5px; letter-spacing: -.1px; }
+  #cmp-table td:first-child, #cmp-table th:first-child { padding-left: 8px; max-width: 54px; }
+  #cmp-table td small { font-size: 11px; }
+  #cmp-table .lg { display: none; } #cmp-table .sm { display: inline; }
+}
 .tbl tr.past td { color: var(--tx3); }
 .tbl tr.next td { background: color-mix(in srgb, var(--ac) 12%, var(--card)); font-weight: 650; }
 .tbl tr.grp td { position: static; background: var(--bg2); color: var(--tx2); font-weight: 650; font-size: 12.5px; text-align: left; }

@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.14';
+const APP_VERSION = '3.15';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -1192,7 +1192,7 @@ function renderCompare() {
   let html = '<tr><th>Tháng</th>' + years.map(y => `<th>${y}</th>`).join('') + '</tr>';
   for (let i = 1; i <= 12; i++) {
     const mm = String(i).padStart(2, '0');
-    html += `<tr><td>Tháng ${i}</td>` + years.map((y, j) => {
+    html += `<tr><td><span class="lg">Tháng&nbsp;</span><span class="sm">T</span>${i}</td>` + years.map((y, j) => {
       const v = cell(y, mm), prev = j ? cell(years[j - 1], mm) : 0;
       const cls = j && v && prev ? (v > prev ? 'up' : 'down') : '';
       const pct = j && v && prev ? ` <small>${v > prev ? '+' : ''}${Math.round((v - prev) / prev * 100)}%</small>` : '';
@@ -1202,7 +1202,7 @@ function renderCompare() {
   const ytot = y => rs.filter(r => r.thang.startsWith(y)).reduce((a, r) => a + r.tien, 0);
   const ymon = y => new Set(rs.filter(r => r.thang.startsWith(y)).map(r => r.thang)).size || 1;
   html += '<tr class="total"><td>Cả năm</td>' + years.map(y => `<td>${fmt(ytot(y))}</td>`).join('') + '</tr>';
-  html += '<tr class="total"><td>Bình quân/tháng</td>' + years.map(y => `<td>${fmt(ytot(y) / ymon(y))}</td>`).join('') + '</tr>';
+  html += '<tr class="total"><td>Bình quân /tháng</td>' + years.map(y => `<td>${fmt(ytot(y) / ymon(y))}</td>`).join('') + '</tr>';
   html += '<tr><td>Số tháng có dữ liệu</td>' + years.map(y => `<td>${ymon(y)}</td>`).join('') + '</tr>';
   $('#cmp-table').innerHTML = html;
 }
