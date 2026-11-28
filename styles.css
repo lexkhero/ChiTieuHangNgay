@@ -595,3 +595,11 @@ fieldset > .hint { margin: -2px 0 8px; }
   .people-cards { grid-template-columns: repeat(2, 1fr); }
 }
 .bud > .err { grid-column: 1 / -1; margin-top: 0; }
+
+/* ô ngày dd/mm/yyyy + nút lịch (ô date thật nằm trong suốt đè lên nút để mở bộ chọn của máy) */
+.dpick { position: relative; display: block; }
+.dpick > input[type=text] { padding-right: 44px; }
+.dpick-b { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; color: var(--ac); overflow: hidden; }
+.dpick-b:hover { background: var(--bg2); }
+.dpick-b .ic { width: 20px; height: 20px; pointer-events: none; }
+.dpick-b input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }

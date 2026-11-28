@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.21';
+const APP_VERSION = '3.22';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -1516,6 +1516,11 @@ function init() {
     e.target.value = d.length > 4 ? d.slice(0, 2) + '/' + d.slice(2, 4) + '/' + d.slice(4) : d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
     if (ngayVal()) renderToday();
   });
+  $('#f-ngay-pick').addEventListener('change', e => {   // chọn từ lịch: giới hạn cùng khoảng với ô nhập
+    if (!e.target.value) return;
+    setNgay(e.target.value); $('#f-ngay').dispatchEvent(new Event('blur')); renderToday();
+  });
+  $('#f-ngay-pick').addEventListener('click', () => { const p = $('#f-ngay-pick'); p.min = '2020-01-01'; p.max = addDays(todayStr(), 31); p.value = ngayVal() || todayStr(); });
   $('#f-ngay').addEventListener('blur', () => { const m = ngayErr(addDays(todayStr(), 31)), w = $('#f-ngay').closest('.fld'); w.classList.toggle('invalid', !!m); w.querySelector('.err').textContent = m; });
   $('#form').addEventListener('submit', onSubmit);
   $('#cancelEdit').onclick = () => { resetForm(true); backFromEdit(); };

@@ -32,6 +32,7 @@
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
       <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
       <symbol id="i-pct" viewBox="0 0 24 24"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></symbol>
+      <symbol id="i-cal" viewBox="0 0 24 24"><path d="M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
       <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
       <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
       <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
@@ -72,7 +73,7 @@
               <p class="edit-note"><svg class="ic"><use href="#i-edit"/></svg>Đang sửa một khoản đã nhập</p>
               <input type="hidden" id="f-id">
               <div class="row">
-                <label class="fld"><span class="fl">Ngày *</span><input type="text" id="f-ngay" inputmode="numeric" maxlength="10" placeholder="dd/mm/yyyy" autocomplete="off" data-req><small class="err"></small></label>
+                <label class="fld"><span class="fl">Ngày *</span><span class="dpick"><input type="text" id="f-ngay" inputmode="numeric" maxlength="10" placeholder="dd/mm/yyyy" autocomplete="off" data-req><span class="dpick-b" title="Chọn từ lịch"><svg class="ic"><use href="#i-cal"/></svg><input type="date" id="f-ngay-pick" tabindex="-1" aria-label="Chọn ngày từ lịch"></span></span><small class="err"></small></label>
                 <label class="fld"><span class="fl">Số tiền (đ) *</span><input type="text" id="f-tien" class="money" inputmode="numeric" autocomplete="off" placeholder="0"><small class="err"></small></label>
               </div>
               <div class="quick" id="quickAmt"></div>
