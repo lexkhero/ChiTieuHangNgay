@@ -1,3 +1,5 @@
+> **Bản 3.19 – nhập một khoản cho nhiều người.** Không cần cập nhật Apps Script, chỉ cần tải lại trang.
+
 > **Bản 3.17 – lịch trả nợ ra sheet "Lịch vay (app)":** thêm file `apps-script/LichVay.gs` vào Apps Script (+ → Tập lệnh → tên `LichVay`),
 > dán lại `Code.gs` mới, rồi Triển khai → Quản lý triển khai → bút chì → Phiên bản mới → Triển khai. Sau đó trong Apps Script chọn hàm
 > `veLichVay` → Chạy một lần. Từ đó mỗi lần sửa khoản vay trên app và mỗi sáng 7 giờ, sheet tự vẽ lại. Hai sheet tự lập
@@ -161,6 +163,7 @@ Chỉ cần nạp file seed **một lần**. Nạp lại cũng không bị trùn
 
 ### Nhập
 - Chọn ngày, người, loại (Sinh hoạt / Phát sinh / Chung), gõ tên khoản chi và số tiền. Gõ `30` sẽ hiểu là 30.000 đ.
+- Khoản chung của nhiều người (ví dụ cả hai vợ chồng cùng ăn): bấm **nhiều người**. Mặc định tiền được **chia đều**; bỏ tích "Chia đều" nếu mỗi người phải trả đủ số tiền. Mỗi người được ghi thành một khoản riêng và vào đúng cột của người đó trên sổ tháng. Chọn "Chung" thì không chọn được người khác.
 - Hạng mục được gợi ý tự động. Nếu bạn chọn hạng mục khác, trang **ghi nhớ** cho tên đó.
 - Phía trên form có **cảnh báo**: khoản vay sắp đến hạn và hạng mục sắp vượt hoặc đã vượt ngân sách.
 - Bấm vào một khoản trong danh sách để sửa hoặc xóa.

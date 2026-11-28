@@ -78,7 +78,12 @@
               <div class="quick" id="quickAmt"></div>
               <small class="hint form-hint">Gõ nhanh: 30 hiểu là 30.000 đ.</small>
 
-              <div class="fld"><span class="fl">Người *</span><div class="chips" id="f-nguoi"></div><small class="err"></small></div>
+              <div class="fld"><span class="fl">Người *</span><div class="chips" id="f-nguoi"></div><small class="err"></small>
+                <small class="hint">Chung một khoản thì bấm nhiều người. Mỗi người sẽ được ghi vào đúng cột của họ trên sổ tháng.</small></div>
+              <div class="fld" id="splitRow" hidden>
+                <label class="chk"><input type="checkbox" id="f-chia" checked> Chia đều số tiền cho những người được chọn</label>
+                <small class="hint" id="shareHint"></small>
+              </div>
               <div class="fld"><span class="fl">Loại</span><div class="chips" id="f-loai"></div></div>
 
               <label class="fld"><span class="fl">Khoản chi *</span>

@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.18';
+const APP_VERSION = '3.19';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -22,7 +22,7 @@ const state = {
   pending: load(LS.pend, []),      // thao tác chưa gửi: upsert | delete | map | config
   config: load(LS.conf, { loans: [], budgets: {} }), // khoản vay, ngân sách (sheet CaiDatApp)
   last: load(LS.last, { nguoi: 'Chồng', loai: 'Sinh hoạt' }),
-  form: { nguoi: null, loai: null, catTouched: false, catUser: false, autoCat: '', from: '', fromY: 0 },
+  form: { nguois: [], loai: null, catTouched: false, catUser: false, autoCat: '', from: '', fromY: 0 },
 };
 
 /* ---------- dữ liệu gộp (server + thao tác chờ gửi) ---------- */
@@ -171,21 +171,52 @@ function chips(container, items, current, onPick) {
   container.innerHTML = items.map(v => `<button type="button" class="chip${v === current ? ' on' : ''}" data-v="${esc(v)}">${esc(v)}</button>`).join('');
   container.onclick = e => { const b = e.target.closest('.chip'); if (b) onPick(b.dataset.v); };
 }
+function chipsMulti(container, items, selected, onPick) {
+  container.innerHTML = items.map(v => { const on = selected.includes(v); return `<button type="button" class="chip${on ? ' on' : ''}" data-v="${esc(v)}" aria-pressed="${on}">${esc(v)}</button>`; }).join('');
+  container.onclick = e => { const b = e.target.closest('.chip'); if (b) onPick(b.dataset.v); };
+}
+/** người đứng đầu trong danh sách đang chọn (dùng cho gợi ý hạng mục, tên thường dùng, số tiền cũ) */
+const formNguoi = () => state.form.nguois[0] || null;
+const isEditing = () => !!$('#f-id').value;
+/** chia tổng tiền cho n người, phần dư (đồng) cộng cho những người đầu để tổng khớp đúng */
+function phanTien(tong, n) {
+  const base = Math.floor(tong / n), du = tong - base * n;
+  return Array.from({ length: n }, (_, i) => base + (i < du ? 1 : 0));
+}
 function setPerson(p) {
-  state.form.nguoi = p;
+  let list;
+  if (p === 'Chung' || isEditing()) list = [p];                         // Chung đứng riêng; khi sửa chỉ có một người
+  else {
+    list = state.form.nguois.filter(x => x !== 'Chung');
+    list = list.includes(p) ? list.filter(x => x !== p) : [...list, p];  // bấm lại để bỏ chọn
+  }
+  state.form.nguois = list;
   if (p === 'Chung') state.form.loai = 'Chung';
   else if (state.form.loai === 'Chung') state.form.loai = 'Phát sinh';
   renderFormChips(); autoCategory(); renderQuickNames();
 }
 function setKind(k) {
   const was = state.form.loai; state.form.loai = k;
-  if (k === 'Chung') state.form.nguoi = 'Chung';
-  else if (state.form.nguoi === 'Chung') state.form.nguoi = people().includes(state.last.nguoi) && state.last.nguoi !== 'Chung' ? state.last.nguoi : people()[0];
+  if (k === 'Chung') state.form.nguois = ['Chung'];
+  else if (state.form.nguois.includes('Chung')) state.form.nguois = [people().includes(state.last.nguoi) && state.last.nguoi !== 'Chung' ? state.last.nguoi : people()[0]];
   renderFormChips(); autoCategory(); if (was !== k) renderQuickNames();
 }
 function renderFormChips() {
-  chips($('#f-nguoi'), people(), state.form.nguoi, setPerson);
+  chipsMulti($('#f-nguoi'), people(), state.form.nguois, setPerson);
   chips($('#f-loai'), KINDS, state.form.loai, setKind);
+  updateShare();
+}
+/** hiện tùy chọn chia tiền và dòng "mỗi người ... đ" khi chọn từ hai người trở lên (chỉ khi nhập mới) */
+function updateShare() {
+  const n = state.form.nguois.length, tien = parseAmount($('#f-tien').value);
+  const show = n > 1 && !isEditing();
+  $('#splitRow').hidden = !show;
+  let msg = '';
+  if (show && tien >= n) {
+    if ($('#f-chia').checked) { const s = phanTien(tien, n); msg = s[0] === s[n - 1] ? `Mỗi người ${fmt(s[0])} đ` : `Mỗi người ${fmt(s[n - 1])} đ hoặc ${fmt(s[0])} đ`; }
+    else msg = `Mỗi người ${fmt(tien)} đ, tổng ${fmt(tien * n)} đ`;
+  }
+  $('#shareHint').textContent = msg;
 }
 function parseAmount(s) {
   let n = parseInt(String(s).replace(/[^\d]/g, ''), 10) || 0;
@@ -194,7 +225,7 @@ function parseAmount(s) {
 }
 function autoCategory() {
   const name = $('#f-ten').value;
-  const c = classify(name, state.form.nguoi, state.userMap);
+  const c = classify(name, formNguoi(), state.userMap);
   state.form.autoCat = c;
   if (!state.form.catTouched) $('#f-hangmuc').value = c;
   $('#catHint').textContent = name ? (state.form.catTouched && $('#f-hangmuc').value !== c ? '(đã chọn tay, gợi ý: ' + c + ')' : '(tự động)') : '';
@@ -202,7 +233,7 @@ function autoCategory() {
 /** gợi ý sẵn cho khoản Chung (giống các dòng có sẵn trên sổ tháng) */
 const CHUNG_GOI_Y = ['Tiền điện', 'Tiền nước', 'Đi chợ', 'Tiền điện thoại', 'Tiền mạng', 'Tiền spotify', 'Tiền gas', 'Tiền rác', 'Gửi xe', 'Siêu thị'];
 function renderQuickNames() {
-  const p = state.form.nguoi, chung = p === 'Chung' || state.form.loai === 'Chung';
+  const p = formNguoi(), chung = p === 'Chung' || state.form.loai === 'Chung';
   const cnt = new Map();
   for (const r of records()) if (chung ? r.nguoi === 'Chung' || r.loai === 'Chung' : r.nguoi === p) cnt.set(r.ten, (cnt.get(r.ten) || 0) + 1);
   let top = [...cnt.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]);
@@ -218,8 +249,9 @@ function resetForm(keepDate) {
   $('#f-id').value = ''; $('#f-ten').value = ''; $('#f-tien').value = ''; $('#f-ghichu').value = '';
   if (!keepDate) $('#f-ngay').value = todayStr();
   $('#f-ngay').min = '2020-01-01'; $('#f-ngay').max = addDays(todayStr(), 31);
-  state.form.nguoi = people().includes(state.last.nguoi) ? state.last.nguoi : people()[0]; state.form.loai = state.last.loai;
+  state.form.nguois = [people().includes(state.last.nguoi) ? state.last.nguoi : people()[0]]; state.form.loai = state.last.loai;
   state.form.catTouched = false; state.form.catUser = false;
+  $('#f-chia').checked = true;
   $('#saveBtn').textContent = 'Lưu khoản chi'; $('#cancelEdit').hidden = true; $('#deleteBtn').hidden = true;
   $('#form').classList.remove('editing'); vClear($('#form'));
   renderFormChips(); autoCategory(); renderQuickNames();
@@ -231,7 +263,7 @@ function editRecord(id) {
   showTab('tab-nhap'); vClear($('#form'));
   $('#f-id').value = r.id; $('#f-ngay').value = r.ngay || (r.thang + '-01'); $('#f-tien').value = fmt(r.tien);
   $('#f-ten').value = r.ten; $('#f-ghichu').value = isSheetRef(r.ghichu) ? '' : r.ghichu || '';
-  state.form.nguoi = r.nguoi; state.form.loai = r.loai; state.form.catTouched = true; state.form.catUser = false;
+  state.form.nguois = [r.nguoi]; state.form.loai = r.loai; state.form.catTouched = true; state.form.catUser = false;
   renderFormChips(); $('#f-hangmuc').value = r.hangmuc; autoCategory();
   $('#saveBtn').textContent = 'Cập nhật'; $('#cancelEdit').hidden = false; $('#deleteBtn').hidden = false;
   $('#form').classList.add('editing');
@@ -256,22 +288,34 @@ function onSubmit(e) {
   if (!ten) E.push([$('#f-ten'), 'Nhập tên khoản chi, ví dụ Cháo canh']);
   else if (!/[\p{L}\d]/u.test(ten)) E.push([$('#f-ten'), 'Tên phải có chữ hoặc số']);
   if (!$('#f-hangmuc').value || !catsAll().includes($('#f-hangmuc').value)) E.push([$('#f-hangmuc'), 'Chọn hạng mục']);
-  if (!state.form.nguoi) E.push([$('#f-nguoi button'), 'Chọn người chi']);
+  const nguois = state.form.nguois.slice();
+  if (!nguois.length) E.push([$('#f-nguoi button'), 'Chọn người chi']);
+  const n = old ? 1 : nguois.length, chia = n > 1 && $('#f-chia').checked;
+  if (n > 1 && tien && tien < n) E.push([$('#f-tien'), 'Số tiền quá nhỏ để chia cho ' + n + ' người']);
   if (!vShow($('#form'), E)) return;
   if (tien >= 50e6 && !confirm('Số tiền ' + fmt(tien) + ' đ khá lớn. Lưu đúng số này?')) return;
   const hangmuc = $('#f-hangmuc').value;
-  const rec = { id, ngay: old && !old.ngay && ngay === old.thang + '-01' ? '' : ngay,
-    thang: ngay.slice(0, 7), nguoi: state.form.nguoi, loai: state.form.loai, ten, tien, hangmuc,
-    ghichu: $('#f-ghichu').value.trim() || (old && isSheetRef(old.ghichu) ? old.ghichu : ''), nguon: old ? old.nguon : 'app' };
+  const shares = chia ? phanTien(tien, n) : Array(n).fill(tien);
+  const ghichu = $('#f-ghichu').value.trim() || (old && isSheetRef(old.ghichu) ? old.ghichu : '');
+  // mỗi người được chọn thành một khoản riêng; sổ tháng sẽ ghi vào đúng cột của từng người
+  const recs = Array.from({ length: n }, (_, i) => ({ id: i === 0 ? id : newId(),
+    ngay: old && !old.ngay && ngay === old.thang + '-01' ? '' : ngay,
+    thang: ngay.slice(0, 7), nguoi: nguois[i], loai: state.form.loai, ten, tien: shares[i], hangmuc,
+    ghichu, nguon: old ? old.nguon : 'app' }));
   // Chọn tay hạng mục khác gợi ý -> ghi nhớ cho tên này (trừ quy tắc cháo của Putin/Út)
-  const auto = classify(ten, rec.nguoi, state.userMap);
-  if (state.form.catUser && hangmuc !== auto && !(['Putin', 'Út'].includes(rec.nguoi) && normName(ten).startsWith('cháo'))) {
+  const nguoi0 = recs[0].nguoi;
+  const auto = classify(ten, nguoi0, state.userMap);
+  if (state.form.catUser && hangmuc !== auto && !(['Putin', 'Út'].includes(nguoi0) && normName(ten).startsWith('cháo'))) {
     state.userMap[normName(ten)] = hangmuc; save(LS.map, state.userMap);
     state.pending.push({ op: 'map', item: { ten: normName(ten), hangmuc } });
   }
-  state.last = { nguoi: rec.nguoi, loai: rec.loai }; save(LS.last, state.last);
-  queue({ op: 'upsert', rec });
-  toast((old ? 'Đã cập nhật: ' : 'Đã lưu: ') + ten + ' ' + fmt(tien) + ' đ', 'ok');
+  state.last = { nguoi: nguoi0, loai: recs[0].loai }; save(LS.last, state.last);
+  recs.forEach(rec => state.pending.push({ op: 'upsert', rec }));
+  save(LS.pend, state.pending); renderAll(); sync(true);
+  if (old) toast('Đã cập nhật: ' + ten + ' ' + fmt(tien) + ' đ', 'ok');
+  else if (n === 1) toast('Đã lưu: ' + ten + ' ' + fmt(tien) + ' đ', 'ok');
+  else if (chia) toast(`Đã lưu ${ten} ${fmt(tien)} đ, chia cho ${n} người`, 'ok');
+  else toast(`Đã lưu ${ten}, ${fmt(tien)} đ cho mỗi người (${n} người)`, 'ok');
   resetForm(true);
   if (old) backFromEdit();
 }
@@ -1349,7 +1393,7 @@ function renderAll() {
   const active = document.querySelector('.tab.active').id;
   if (document.activeElement && document.activeElement.matches && document.activeElement.matches('.modal input, .modal select')) { $('#pendingCount').textContent = state.pending.length; return; }
   if (active === 'tab-nhap') {
-    if (!people().includes(state.form.nguoi)) state.form.nguoi = people()[0];
+    state.form.nguois = state.form.nguois.filter(p => people().includes(p));
     renderFormChips(); renderToday(); renderAlerts();
   }
   if (active === 'tab-vay') renderLoans();
@@ -1448,9 +1492,10 @@ function init() {
   $('#quickNames').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     $('#f-ten').value = b.dataset.n; state.form.catTouched = false; autoCategory();
-    const a = lastAmountFor(b.dataset.n, state.form.nguoi); if (a && !$('#f-tien').value) $('#f-tien').value = fmt(a);
+    const a = lastAmountFor(b.dataset.n, formNguoi()); if (a && !$('#f-tien').value) $('#f-tien').value = fmt(a);
   };
-  $('#f-tien').addEventListener('input', e => { const n = parseInt(e.target.value.replace(/[^\d]/g, '').slice(0, 10), 10); e.target.value = n ? fmt(n) : ''; });
+  $('#f-tien').addEventListener('input', e => { const n = parseInt(e.target.value.replace(/[^\d]/g, '').slice(0, 10), 10); e.target.value = n ? fmt(n) : ''; updateShare(); });
+  $('#f-chia').addEventListener('change', updateShare);
   $('#f-tien').addEventListener('blur', e => { const n = parseAmount(e.target.value); e.target.value = n ? fmt(n) : ''; });
   $('#f-ten').addEventListener('input', autoCategory);
   $('#f-hangmuc').addEventListener('change', () => { state.form.catTouched = true; state.form.catUser = true; autoCategory(); });
