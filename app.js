@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.20';
+const APP_VERSION = '3.21';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -248,10 +248,19 @@ function lastAmountFor(name, person) {
   const rs = records().filter(r => r.ten === name && r.nguoi === person && r.ngay).sort((a, b) => (b.ngay > a.ngay ? 1 : -1));
   return rs[0] ? rs[0].tien : 0;
 }
+/** ô ngày hiển thị dd/mm/yyyy; bên trong vẫn dùng yyyy-mm-dd */
+function setNgay(iso) { $('#f-ngay').value = iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : ''; }
+function ngayVal() {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec($('#f-ngay').value.trim());
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : '';
+}
+function ngayErr(maxDay) {
+  if (!ngayVal()) return 'Nhập ngày dạng dd/mm/yyyy, ví dụ 28/11/2026';
+  return V.dateErr(ngayVal(), true, '2020-01-01', maxDay, 'Ngày chi');
+}
 function resetForm(keepDate) {
   $('#f-id').value = ''; $('#f-ten').value = ''; $('#f-tien').value = ''; $('#f-ghichu').value = '';
-  if (!keepDate) $('#f-ngay').value = todayStr();
-  $('#f-ngay').min = '2020-01-01'; $('#f-ngay').max = addDays(todayStr(), 31);
+  if (!keepDate) setNgay(todayStr());
   state.form.nguois = [people().includes(state.last.nguoi) ? state.last.nguoi : people()[0]]; state.form.loai = state.last.loai;
   state.form.catTouched = false; state.form.catUser = false;
   $('#f-chia').checked = true;
@@ -264,7 +273,7 @@ function editRecord(id) {
   const from = document.querySelector('.tab.active').id;   // nhớ màn đang xem để quay lại sau khi sửa
   state.form.from = from === 'tab-nhap' ? '' : from; state.form.fromY = window.scrollY;
   showTab('tab-nhap'); vClear($('#form'));
-  $('#f-id').value = r.id; $('#f-ngay').value = r.ngay || (r.thang + '-01'); $('#f-tien').value = fmt(r.tien);
+  $('#f-id').value = r.id; setNgay(r.ngay || (r.thang + '-01')); $('#f-tien').value = fmt(r.tien);
   $('#f-ten').value = r.ten; $('#f-ghichu').value = isSheetRef(r.ghichu) ? '' : r.ghichu || '';
   state.form.nguois = [r.nguoi]; state.form.loai = r.loai; state.form.catTouched = true; state.form.catUser = false;
   renderFormChips(); $('#f-hangmuc').value = r.hangmuc; autoCategory();
@@ -281,11 +290,11 @@ function onSubmit(e) {
   e.preventDefault();
   const id = $('#f-id').value || newId();
   const old = records().find(x => x.id === id);
-  const ngay = $('#f-ngay').value;
+  const ngay = ngayVal();
   const tien = parseAmount($('#f-tien').value);
   const ten = $('#f-ten').value.trim().replace(/\s+/g, ' ');
   const E = [], maxDay = addDays(todayStr(), 31);
-  E.push([$('#f-ngay'), V.dateErr(ngay, true, '2020-01-01', maxDay, 'Ngày chi')]);
+  E.push([$('#f-ngay'), ngayErr(maxDay)]);
   if (!tien) E.push([$('#f-tien'), 'Nhập số tiền, ví dụ 30 = 30.000 đ']);
   else if (tien > 2e9) E.push([$('#f-tien'), 'Số tiền quá lớn (tối đa 2 tỷ), kiểm tra lại số 0']);
   if (!ten) E.push([$('#f-ten'), 'Nhập tên khoản chi, ví dụ Cháo canh']);
@@ -369,7 +378,7 @@ function recHtml(r, pend, mode) {
     <div class="amt"><b>${fmt(r.tien)}</b>${pend.has(r.id) ? '<small class="pend">chờ gửi</small>' : ''}</div></li>`;
 }
 function renderToday() {
-  const t = $('#f-ngay').value || todayStr();
+  const t = ngayVal() || todayStr();
   const rs = records().filter(r => r.ngay === t);
   const pend = pendingIds();
   $('#todayTotal').textContent = fmt(rs.reduce((s, r) => s + r.tien, 0)) + ' đ';
@@ -1502,7 +1511,12 @@ function init() {
   $('#f-tien').addEventListener('blur', e => { const n = parseAmount(e.target.value); e.target.value = n ? fmt(n) : ''; });
   $('#f-ten').addEventListener('input', autoCategory);
   $('#f-hangmuc').addEventListener('change', () => { state.form.catTouched = true; state.form.catUser = true; autoCategory(); });
-  $('#f-ngay').addEventListener('change', renderToday);
+  $('#f-ngay').addEventListener('input', e => {   // tự chèn dấu / khi gõ: 28112026 -> 28/11/2026
+    const d = e.target.value.replace(/\D/g, '').slice(0, 8);
+    e.target.value = d.length > 4 ? d.slice(0, 2) + '/' + d.slice(2, 4) + '/' + d.slice(4) : d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
+    if (ngayVal()) renderToday();
+  });
+  $('#f-ngay').addEventListener('blur', () => { const m = ngayErr(addDays(todayStr(), 31)), w = $('#f-ngay').closest('.fld'); w.classList.toggle('invalid', !!m); w.querySelector('.err').textContent = m; });
   $('#form').addEventListener('submit', onSubmit);
   $('#cancelEdit').onclick = () => { resetForm(true); backFromEdit(); };
   $('#deleteBtn').onclick = onDelete;
