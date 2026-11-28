@@ -1,7 +1,7 @@
 'use strict';
 /* ChiTieuHangNgay – PWA nhập & tổng hợp chi tiêu, đồng bộ với Google Sheet qua Apps Script */
 
-const APP_VERSION = '3.19';
+const APP_VERSION = '3.20';
 const DEFAULT_PEOPLE = ['Chồng', 'Vợ', 'Jun', 'Putin', 'Út', 'Chung'];
 const KINDS = ['Sinh hoạt', 'Phát sinh', 'Chung'];
 const QUICK_AMT = [10000, 20000, 25000, 30000, 40000, 50000, 100000, 200000, 500000];
@@ -70,7 +70,7 @@ async function apiPost(body) {
   return j;
 }
 
-let syncing = false, lastPull = 0, retryN = 0, retryTimer = null;
+let lastSyncErr = '', syncing = false, lastPull = 0, retryN = 0, retryTimer = null;
 const PULL_EVERY = 120000; // tải lại toàn bộ từ Sheet tối đa 2 phút/lần khi tự đồng bộ
 /** silent: tự chạy nền; forcePull: luôn tải lại toàn bộ dữ liệu từ Sheet */
 async function sync(silent, forcePull) {
@@ -91,7 +91,10 @@ async function sync(silent, forcePull) {
     if (!silent) toast('Đã đồng bộ ' + fmt(state.server.length) + ' khoản', 'ok');
   } catch (e) {
     ok = false;
-    if (!silent) toast('Chưa đồng bộ được: ' + e.message + '. Dữ liệu vẫn lưu trên máy, app sẽ tự gửi lại.', 'err');
+    const msg = (e && e.message === 'Failed to fetch' ? 'không kết nối được tới Apps Script (kiểm tra mạng và đường dẫn /exec)' : e.message);
+    // lỗi nền cũng báo (mỗi lỗi một lần) để không bị kẹt "chờ gửi" mà không biết vì sao
+    if (!silent || (state.pending.length && msg !== lastSyncErr)) toast('Chưa gửi được: ' + msg + '. Dữ liệu vẫn lưu trên máy, app sẽ tự gửi lại.', 'err');
+    lastSyncErr = msg;
   } finally {
     syncing = false; $('#syncBtn').classList.remove('spin'); renderAll();
     clearTimeout(retryTimer);
@@ -100,7 +103,7 @@ async function sync(silent, forcePull) {
       const wait = ok ? 800 : [5, 15, 60, 300][Math.min(retryN++, 3)] * 1000;
       retryTimer = setTimeout(() => sync(true), wait);
     }
-    if (ok) retryN = 0;
+    if (ok) { retryN = 0; lastSyncErr = ''; }
   }
 }
 async function flushPending() {
